@@ -19,6 +19,14 @@ export type AppointmentType = {
   scope: 'global' | 'private'
   /** Private types are visible only to the owning practitioner and Admin staff. */
   ownerPractitionerId?: string
+  /** Admin practice-default metadata */
+  baseDurationMin?: number
+  patientClass?: 'new' | 'existing' | 'both'
+  modalities?: Array<'in-person' | 'telehealth' | 'phone'>
+  noticeWindowHours?: number
+  bookingWindowDays?: number
+  bufferBefore?: number
+  bufferAfter?: number
 }
 
 export type CalendarEvent = {

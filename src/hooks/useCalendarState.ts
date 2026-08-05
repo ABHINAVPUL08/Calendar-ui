@@ -3,6 +3,7 @@ import { calendarApi } from '../api/calendarApi'
 import {
   accessibleAppointmentTypes,
   appointmentTypes as seedAppointmentTypes,
+  buildGlobalAppointmentType,
   buildPrivateAppointmentType,
   canAccessAppointmentType,
   currentUser,
@@ -308,11 +309,16 @@ export const useCalendarState = () => {
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('events')
   const [viewMode, setViewMode] = useState<ViewMode>('day')
   const [selectedDate, setSelectedDate] = useState<Date>(new Date(2026, 6, 28))
-  const [isLoading, setIsLoading] = useState(false)
   const [filters, setFilters] = useState<TeamFilters>(defaultFilters)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ open: false })
   const [availabilityEditingId, setAvailabilityEditingId] = useState<string | null>(null)
+  const [viewerId, setViewerId] = useState(currentUser.id)
+
+  const viewer = useMemo(
+    () => practitioners.find((item) => item.id === viewerId) ?? currentUser,
+    [viewerId],
+  )
 
   const [events, setEvents] = useState<CalendarEvent[]>(createInitialEvents)
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>(createInitialAvailability)
@@ -341,12 +347,12 @@ export const useCalendarState = () => {
       if (!filters.practitionerIds.includes(event.practitionerId)) return false
       if (!eventTypeSet.has(event.appointmentTypeId)) return false
       const appointmentType = appointmentTypeCatalog.find((item) => item.id === event.appointmentTypeId)
-      if (!appointmentType || !canAccessAppointmentType(appointmentType, currentUser)) return false
+      if (!appointmentType || !canAccessAppointmentType(appointmentType, viewer)) return false
       const practitioner = practitioners.find((p) => p.id === event.practitionerId)
       if (!practitioner) return false
       return filters.roles.includes(practitioner.role) && filters.locations.includes(practitioner.location)
     })
-  }, [events, filters, appointmentTypeCatalog])
+  }, [events, filters, appointmentTypeCatalog, viewer])
 
   const visibleAvailability = useMemo(() => {
     const eventTypeSet = new Set(filters.eventTypeIds)
@@ -355,11 +361,11 @@ export const useCalendarState = () => {
       if (item.appointmentTypeId) {
         if (!eventTypeSet.has(item.appointmentTypeId)) return false
         const appointmentType = appointmentTypeCatalog.find((type) => type.id === item.appointmentTypeId)
-        if (appointmentType && !canAccessAppointmentType(appointmentType, currentUser)) return false
+        if (appointmentType && !canAccessAppointmentType(appointmentType, viewer)) return false
       }
       return true
     })
-  }, [availabilityBlocks, filters, appointmentTypeCatalog])
+  }, [availabilityBlocks, filters, appointmentTypeCatalog, viewer])
 
   const selectedEvent = useMemo(
     () => visibleEvents.find((event) => event.id === selectedEventId) ?? null,
@@ -371,18 +377,12 @@ export const useCalendarState = () => {
     [availabilityBlocks, availabilityEditingId],
   )
 
-  const triggerLoading = () => {
-    setIsLoading(true)
-    window.setTimeout(() => setIsLoading(false), 450)
-  }
-
   const shiftDate = (direction: -1 | 1) => {
     const next = new Date(selectedDate)
     if (viewMode === 'day') next.setDate(next.getDate() + direction)
     if (viewMode === 'week') next.setDate(next.getDate() + direction * 7)
     if (viewMode === 'month') next.setMonth(next.getMonth() + direction)
     setSelectedDate(next)
-    triggerLoading()
   }
 
   const changeMode = (mode: CalendarMode) => {
@@ -391,12 +391,10 @@ export const useCalendarState = () => {
     setSelectedEventId(null)
     setAvailabilityEditingId(null)
     setAvailabilityDraft(null)
-    triggerLoading()
   }
 
   const changeView = (mode: ViewMode) => {
     setViewMode(mode)
-    triggerLoading()
   }
 
   const deleteEvent = async (eventId: string) => {
@@ -617,6 +615,7 @@ export const useCalendarState = () => {
     endSlot: number,
     onDate: Date = selectedDate,
     wholeDay = false,
+    untilDate: Date = onDate,
   ) => {
     const startMinutes = GRID_START_MINUTES + startSlot * SLOT_MINUTES
     const endMinutes = GRID_START_MINUTES + (endSlot + 1) * SLOT_MINUTES
@@ -625,17 +624,26 @@ export const useCalendarState = () => {
     const endDate = new Date(onDate)
     endDate.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0)
     const isWholeDay = wholeDay || (startSlot === 0 && endSlot >= SLOT_COUNT - 1)
+    const rangeEnd = untilDate < onDate ? onDate : untilDate
+    const repeatDays: number[] = []
+    const cursor = new Date(onDate)
+    cursor.setHours(0, 0, 0, 0)
+    const last = new Date(rangeEnd)
+    last.setHours(0, 0, 0, 0)
+    while (cursor <= last) {
+      const day = cursor.getDay()
+      if (!repeatDays.includes(day)) repeatDays.push(day)
+      cursor.setDate(cursor.getDate() + 1)
+    }
     setAvailabilityDraft({
       startDate: toDateInputValue(onDate),
       startTime: isWholeDay ? WHOLE_DAY_START : formatTime(startDate),
       endTime: isWholeDay ? WHOLE_DAY_END : formatTime(endDate),
       wholeDay: isWholeDay,
       status: 'available',
-      repeat: 'none',
-      repeatDays: [onDate.getDay()],
-      repeatUntil: toDateInputValue(
-        new Date(onDate.getFullYear(), onDate.getMonth(), onDate.getDate() + 30),
-      ),
+      repeat: repeatDays.length > 1 || toDateInputValue(onDate) !== toDateInputValue(rangeEnd) ? 'weekly' : 'none',
+      repeatDays: repeatDays.length ? repeatDays : [onDate.getDay()],
+      repeatUntil: toDateInputValue(rangeEnd),
     })
     setContextMenu({ open: false })
     return practitionerId
@@ -650,35 +658,50 @@ export const useCalendarState = () => {
     notes: string
     location?: string
     date?: string
+    endDate?: string
   }) => {
     const day = input.date ? parseDateInput(input.date) : selectedDate
-    const start = setTimeForDate(day, input.startTime)
-    const end = setTimeForDate(day, input.endTime)
-    if (end <= start) return
-    const event: CalendarEvent = {
-      id: crypto.randomUUID(),
-      practitionerId: input.practitionerId,
-      patientName: input.patientName,
-      appointmentTypeId: input.appointmentTypeId,
-      start: start.toISOString(),
-      end: end.toISOString(),
-      notes: input.notes,
-      location: input.location,
+    const lastDay = input.endDate ? parseDateInput(input.endDate) : day
+    const rangeStart = day <= lastDay ? day : lastDay
+    const rangeEnd = day <= lastDay ? lastDay : day
+
+    const days: Date[] = []
+    const cursor = new Date(rangeStart)
+    cursor.setHours(0, 0, 0, 0)
+    const endCursor = new Date(rangeEnd)
+    endCursor.setHours(0, 0, 0, 0)
+    while (cursor <= endCursor) {
+      days.push(new Date(cursor))
+      cursor.setDate(cursor.getDate() + 1)
     }
-    setPendingEventIds((prev) => new Set([...prev, event.id]))
-    setEvents((prev) => [...prev, event])
-    setSelectedEventId(event.id)
-    try {
-      await calendarApi.createEvent(event)
-    } catch {
-      setEvents((prev) => prev.filter((item) => item.id !== event.id))
-      setSelectedEventId(null)
-    } finally {
-      setPendingEventIds((prev) => {
-        const next = new Set(prev)
-        next.delete(event.id)
-        return next
-      })
+
+    for (const onDay of days) {
+      const start = setTimeForDate(onDay, input.startTime)
+      const end = setTimeForDate(onDay, input.endTime)
+      if (end <= start) continue
+      const event: CalendarEvent = {
+        id: crypto.randomUUID(),
+        practitionerId: input.practitionerId,
+        patientName: input.patientName,
+        appointmentTypeId: input.appointmentTypeId,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        notes: input.notes,
+        location: input.location,
+      }
+      setPendingEventIds((prev) => new Set([...prev, event.id]))
+      setEvents((prev) => [...prev, event])
+      try {
+        await calendarApi.createEvent(event)
+      } catch {
+        setEvents((prev) => prev.filter((item) => item.id !== event.id))
+      } finally {
+        setPendingEventIds((prev) => {
+          const next = new Set(prev)
+          next.delete(event.id)
+          return next
+        })
+      }
     }
   }
 
@@ -701,21 +724,77 @@ export const useCalendarState = () => {
     return created
   }
 
+  const createGlobalAppointmentType = (input: {
+    name: string
+    color: string
+    textColor: string
+    baseDurationMin: number
+    patientClass: 'new' | 'existing' | 'both'
+    modalities: Array<'in-person' | 'telehealth' | 'phone'>
+  }) => {
+    const trimmed = input.name.trim()
+    if (!trimmed) return null
+    const existing = appointmentTypeCatalog.find(
+      (type) => type.scope === 'global' && type.name.toLowerCase() === trimmed.toLowerCase(),
+    )
+    if (existing) return existing
+    const created = buildGlobalAppointmentType({ ...input, name: trimmed })
+    setAppointmentTypeCatalog((prev) => [...prev, created])
+    setFilters((prev) =>
+      prev.eventTypeIds.includes(created.id)
+        ? prev
+        : { ...prev, eventTypeIds: [...prev.eventTypeIds, created.id] },
+    )
+    return created
+  }
+
+  const updateGlobalAppointmentType = (
+    id: string,
+    input: {
+      name: string
+      color: string
+      textColor: string
+      baseDurationMin: number
+      patientClass: 'new' | 'existing' | 'both'
+      modalities: Array<'in-person' | 'telehealth' | 'phone'>
+    },
+  ) => {
+    const trimmed = input.name.trim()
+    if (!trimmed) return null
+    const existing = appointmentTypeCatalog.find((type) => type.id === id)
+    if (!existing || existing.scope !== 'global') return null
+    const nameTaken = appointmentTypeCatalog.some(
+      (type) =>
+        type.id !== id &&
+        type.scope === 'global' &&
+        type.name.toLowerCase() === trimmed.toLowerCase(),
+    )
+    if (nameTaken) return null
+    const updated = {
+      ...existing,
+      name: trimmed,
+      color: input.color,
+      textColor: input.textColor,
+      baseDurationMin: input.baseDurationMin,
+      patientClass: input.patientClass,
+      modalities: input.modalities,
+    }
+    setAppointmentTypeCatalog((prev) => prev.map((type) => (type.id === id ? updated : type)))
+    return updated
+  }
+
   const goToToday = () => {
     setSelectedDate(new Date())
-    triggerLoading()
   }
 
   const selectDate = (date: Date) => {
     setSelectedDate(date)
-    triggerLoading()
   }
 
   return {
     calendarMode,
     viewMode,
     selectedDate,
-    isLoading,
     events: visibleEvents,
     availabilityBlocks: visibleAvailability,
     allAvailabilityBlocks: availabilityBlocks,
@@ -729,6 +808,8 @@ export const useCalendarState = () => {
     pendingAvailabilityIds,
     pendingEventIds,
     recentlyCreatedAvailabilityIds,
+    viewer,
+    setViewerId,
     setFilters,
     setSelectedEventId,
     setAvailabilityDraft,
@@ -743,6 +824,8 @@ export const useCalendarState = () => {
     updateEvent,
     createEvent,
     createAppointmentType,
+    createGlobalAppointmentType,
+    updateGlobalAppointmentType,
     moveEvent,
     resizeEvent,
     deleteAvailability,

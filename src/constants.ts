@@ -23,9 +23,48 @@ export const currentUser =
   practitioners.find((item) => item.isCurrentUser) ?? practitioners[0]
 
 export const appointmentTypes: AppointmentType[] = [
-  { id: 'initial-visit', name: 'Initial Visit', color: '#0f5f92', textColor: '#ffffff', scope: 'global' },
-  { id: 'follow-up', name: 'Follow-up', color: '#7e57c2', textColor: '#ffffff', scope: 'global' },
-  { id: 'discovery-call', name: 'Discovery Call', color: '#ef8f25', textColor: '#ffffff', scope: 'global' },
+  {
+    id: 'initial-visit',
+    name: 'Initial Visit',
+    color: '#0f5f92',
+    textColor: '#ffffff',
+    scope: 'global',
+    baseDurationMin: 60,
+    patientClass: 'both',
+    modalities: ['in-person', 'telehealth'],
+    noticeWindowHours: 24,
+    bookingWindowDays: 60,
+    bufferBefore: 15,
+    bufferAfter: 15,
+  },
+  {
+    id: 'follow-up',
+    name: 'Follow-up',
+    color: '#7e57c2',
+    textColor: '#ffffff',
+    scope: 'global',
+    baseDurationMin: 30,
+    patientClass: 'existing',
+    modalities: ['in-person', 'telehealth', 'phone'],
+    noticeWindowHours: 12,
+    bookingWindowDays: 60,
+    bufferBefore: 0,
+    bufferAfter: 5,
+  },
+  {
+    id: 'discovery-call',
+    name: 'Discovery Call',
+    color: '#ef8f25',
+    textColor: '#ffffff',
+    scope: 'global',
+    baseDurationMin: 30,
+    patientClass: 'new',
+    modalities: ['telehealth', 'phone'],
+    noticeWindowHours: 2,
+    bookingWindowDays: 30,
+    bufferBefore: 0,
+    bufferAfter: 0,
+  },
   { id: 'busy-external', name: 'Busy - External', color: '#d9e0e6', textColor: '#3e5569', scope: 'global' },
   {
     id: 'lab-review-private',
@@ -44,6 +83,37 @@ export const appointmentTypes: AppointmentType[] = [
     ownerPractitionerId: 'p2',
   },
 ]
+
+export const PRACTICE_TYPE_COLORS = [
+  { color: '#0f5f92', textColor: '#ffffff' },
+  { color: '#006b67', textColor: '#ffffff' },
+  { color: '#2a9d8f', textColor: '#ffffff' },
+  { color: '#7e57c2', textColor: '#ffffff' },
+  { color: '#ef8f25', textColor: '#ffffff' },
+  { color: '#6b7280', textColor: '#ffffff' },
+]
+
+export const buildGlobalAppointmentType = (input: {
+  name: string
+  color: string
+  textColor: string
+  baseDurationMin: number
+  patientClass: 'new' | 'existing' | 'both'
+  modalities: Array<'in-person' | 'telehealth' | 'phone'>
+}): AppointmentType => ({
+  id: `global-${crypto.randomUUID().slice(0, 8)}`,
+  name: input.name.trim(),
+  color: input.color,
+  textColor: input.textColor,
+  scope: 'global',
+  baseDurationMin: input.baseDurationMin,
+  patientClass: input.patientClass,
+  modalities: input.modalities,
+  noticeWindowHours: 24,
+  bookingWindowDays: 60,
+  bufferBefore: 0,
+  bufferAfter: 0,
+})
 
 export const canAccessAppointmentType = (type: AppointmentType, viewer: Practitioner = currentUser): boolean => {
   if (type.scope === 'global') return true
@@ -97,3 +167,52 @@ export const availabilityColors: Record<AvailabilityStatus, string> = {
 
 export const WHOLE_DAY_START = '8:00 AM'
 export const WHOLE_DAY_END = '6:00 PM'
+
+/** Intake / questionnaire forms a doctor can assign when booking an appointment. */
+export type PatientFormTemplate = {
+  id: string
+  name: string
+  /** Used for status badge demos in the assign table */
+  defaultStatus: 'Unassigned' | 'Assigned' | 'Report Generated'
+}
+
+/**
+ * 2–3 forms per appointment type. Private / unknown types fall back to DEFAULT_PATIENT_FORMS.
+ */
+export const FORMS_BY_APPOINTMENT_TYPE: Record<string, PatientFormTemplate[]> = {
+  'initial-visit': [
+    { id: 'about-you', name: 'About You Form', defaultStatus: 'Unassigned' },
+    { id: 'diagnoses', name: 'Diagnoses', defaultStatus: 'Unassigned' },
+    { id: 'new-patient-intake', name: 'New Patient Intake', defaultStatus: 'Unassigned' },
+  ],
+  'follow-up': [
+    { id: 'follow-up-focus', name: 'Follow Up Focus', defaultStatus: 'Unassigned' },
+    { id: 'progress-since-last', name: 'Progress Since Last Visit', defaultStatus: 'Unassigned' },
+    { id: 'symptoms', name: 'Symptoms', defaultStatus: 'Unassigned' },
+  ],
+  'discovery-call': [
+    { id: 'goals-readiness', name: 'Goals, Readiness & Support', defaultStatus: 'Unassigned' },
+    { id: 'about-you', name: 'About You Form', defaultStatus: 'Unassigned' },
+    { id: 'lifestyle', name: 'Lifestyle', defaultStatus: 'Unassigned' },
+  ],
+  'lab-review-private': [
+    { id: 'lab-results', name: 'Lab Results Review', defaultStatus: 'Unassigned' },
+    { id: 'symptoms', name: 'Symptoms', defaultStatus: 'Unassigned' },
+    { id: 'history', name: 'History', defaultStatus: 'Unassigned' },
+  ],
+  'therapy-intake-private': [
+    { id: 'therapy-intake', name: 'Therapy Intake Questionnaire', defaultStatus: 'Unassigned' },
+    { id: 'significant-life', name: 'Significant Life Events', defaultStatus: 'Unassigned' },
+    { id: 'goals-readiness', name: 'Goals, Readiness & Support', defaultStatus: 'Unassigned' },
+  ],
+}
+
+export const DEFAULT_PATIENT_FORMS: PatientFormTemplate[] = [
+  { id: 'about-you', name: 'About You Form', defaultStatus: 'Unassigned' },
+  { id: 'symptoms', name: 'Symptoms', defaultStatus: 'Unassigned' },
+  { id: 'lifestyle', name: 'Lifestyle', defaultStatus: 'Unassigned' },
+]
+
+export const formsForAppointmentType = (appointmentTypeId: string): PatientFormTemplate[] =>
+  FORMS_BY_APPOINTMENT_TYPE[appointmentTypeId] ?? DEFAULT_PATIENT_FORMS
+
