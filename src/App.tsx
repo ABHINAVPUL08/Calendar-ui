@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   accessibleAppointmentTypes,
   availabilityColors,
-  currentUser,
+  formsForAppointmentType,
   GRID_START_MINUTES,
   practitioners,
   SLOT_COUNT,
@@ -22,6 +22,9 @@ import {
   toDateInputValue,
 } from './date-utils'
 import { CreateEventPanel, buildAvailabilityForms, defaultAppointmentForm, defaultAvailabilityForm } from './components/CreateEventPanel'
+import { AppointmentTypesPreview } from './components/AppointmentTypesPreview'
+import { NewAppointmentTypeModal } from './components/NewAppointmentTypeModal'
+import { EventDetailsModal } from './components/EventDetailsModal'
 import { ContextMenu } from './components/ContextMenu'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Modal } from './components/Modal'
@@ -43,7 +46,6 @@ const App = () => {
     calendarMode,
     viewMode,
     selectedDate,
-    isLoading,
     events,
     availabilityBlocks,
     allAvailabilityBlocks,
@@ -63,7 +65,6 @@ const App = () => {
     setAvailabilityEditingId,
     setContextMenu,
     shiftDate,
-    goToToday,
     selectDate,
     changeMode,
     changeView,
@@ -71,6 +72,8 @@ const App = () => {
     updateEvent,
     createEvent,
     createAppointmentType,
+    createGlobalAppointmentType,
+    updateGlobalAppointmentType,
     moveEvent,
     resizeEvent,
     deleteAvailability,
@@ -78,6 +81,8 @@ const App = () => {
     moveAvailability,
     resizeAvailability,
     openAvailabilityDraft,
+    viewer,
+    setViewerId,
   } = useCalendarState()
 
   const [now, setNow] = useState(() => new Date())
@@ -86,20 +91,39 @@ const App = () => {
     practitionerId: string
     startSlot: number
     endSlot: number
-    dateKey: string
+    startDateKey: string
+    endDateKey: string
   } | null>(null)
   const dragSelectionRef = useRef(dragSelection)
   const [dragAction, setDragAction] = useState<DragAction | null>(null)
   const [isEditingEvent, setIsEditingEvent] = useState(false)
   const [isCreatingEvent, setIsCreatingEvent] = useState(false)
   const [createEventKind, setCreateEventKind] = useState<'appointment' | 'availability'>('appointment')
+  const [lockCreatePractitioner, setLockCreatePractitioner] = useState(false)
+  const [appointmentTimeDraft, setAppointmentTimeDraft] = useState<{
+    date: Date
+    endDate?: Date
+    startTime: string
+    endTime: string
+  } | null>(null)
   const [scheduleFocusId, setScheduleFocusId] = useState<string | null>(null)
   const [schedulePreviewId, setSchedulePreviewId] = useState<string | null>(null)
-  const visibleTypes = useMemo(
-    () => accessibleAppointmentTypes(currentUser, appointmentTypeCatalog),
-    [appointmentTypeCatalog],
+  const [showAppointmentTypesPreview, setShowAppointmentTypesPreview] = useState(false)
+  const [showNewAppointmentTypeModal, setShowNewAppointmentTypeModal] = useState(false)
+  const [editingAppointmentTypeId, setEditingAppointmentTypeId] = useState<string | null>(null)
+  const [actionToast, setActionToast] = useState<string | null>(null)
+  const isAdminViewer = viewer.role === 'Admin'
+  const editingAppointmentType = useMemo(
+    () =>
+      editingAppointmentTypeId
+        ? appointmentTypeCatalog.find((type) => type.id === editingAppointmentTypeId) ?? null
+        : null,
+    [appointmentTypeCatalog, editingAppointmentTypeId],
   )
-  const [searchQuery, setSearchQuery] = useState('')
+  const visibleTypes = useMemo(
+    () => accessibleAppointmentTypes(viewer, appointmentTypeCatalog),
+    [appointmentTypeCatalog, viewer],
+  )
   const [pendingDelete, setPendingDelete] = useState<
     | { type: 'event'; id: string; label: string }
     | { type: 'availability'; id: string; label: string }
@@ -120,14 +144,26 @@ const App = () => {
   } | null>(null)
 
   const updateDragSelection = (
-    next: { practitionerId: string; startSlot: number; endSlot: number; dateKey: string } | null,
+    next: {
+      practitionerId: string
+      startSlot: number
+      endSlot: number
+      startDateKey: string
+      endDateKey: string
+    } | null,
   ) => {
     dragSelectionRef.current = next
     setDragSelection(next)
   }
 
-  const beginAvailabilityDrag = (practitionerId: string, slotIndex: number, dateKey: string) => {
-    updateDragSelection({ practitionerId, startSlot: slotIndex, endSlot: slotIndex, dateKey })
+  const beginSlotDrag = (practitionerId: string, slotIndex: number, dateKey: string) => {
+    updateDragSelection({
+      practitionerId,
+      startSlot: slotIndex,
+      endSlot: slotIndex,
+      startDateKey: dateKey,
+      endDateKey: dateKey,
+    })
     const finish = () => {
       window.removeEventListener('mouseup', finish)
       const selection = dragSelectionRef.current
@@ -135,15 +171,38 @@ const App = () => {
       if (!selection) return
       const start = Math.min(selection.startSlot, selection.endSlot)
       const end = Math.max(selection.startSlot, selection.endSlot)
-      const onDate = parseDateInput(selection.dateKey)
-      const draftPractitionerId = openAvailabilityDraft(
-        selection.practitionerId,
-        start,
-        end,
-        onDate,
-      )
-      setActivePractitionerForDraft(draftPractitionerId)
-      setCreateEventKind('availability')
+      const rangeStart =
+        selection.startDateKey <= selection.endDateKey
+          ? selection.startDateKey
+          : selection.endDateKey
+      const rangeEnd =
+        selection.startDateKey <= selection.endDateKey
+          ? selection.endDateKey
+          : selection.startDateKey
+      const onDate = parseDateInput(rangeStart)
+      const untilDate = parseDateInput(rangeEnd)
+      setActivePractitionerForDraft(selection.practitionerId)
+      setLockCreatePractitioner(true)
+      if (calendarMode === 'availability') {
+        openAvailabilityDraft(selection.practitionerId, start, end, onDate, false, untilDate)
+        setAppointmentTimeDraft(null)
+        setCreateEventKind('availability')
+      } else {
+        const startMinutes = GRID_START_MINUTES + start * SLOT_MINUTES
+        const endMinutes = GRID_START_MINUTES + (end + 1) * SLOT_MINUTES
+        const startAt = new Date(onDate)
+        startAt.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0)
+        const endAt = new Date(onDate)
+        endAt.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0)
+        setAppointmentTimeDraft({
+          date: onDate,
+          endDate: untilDate,
+          startTime: formatTime(startAt),
+          endTime: formatTime(endAt),
+        })
+        setAvailabilityDraft(null)
+        setCreateEventKind('appointment')
+      }
       setIsCreatingEvent(true)
     }
     window.addEventListener('mouseup', finish)
@@ -152,6 +211,11 @@ const App = () => {
   const closeCreatePanel = () => {
     setIsCreatingEvent(false)
     setAvailabilityDraft(null)
+    setAppointmentTimeDraft(null)
+    setLockCreatePractitioner(false)
+    setScheduleFocusId(null)
+    updateDragSelection(null)
+    setSelectedEventId(null)
   }
 
   const dateTitle = selectedDate.toLocaleDateString([], {
@@ -192,12 +256,9 @@ const App = () => {
         const start = new Date(event.start)
         if (start < visibleRange.start || start > visibleRange.end) return false
         if (viewMode === 'day' && !isSameDay(start, selectedDate)) return false
-        if (!searchQuery.trim()) return true
-        const type = appointmentTypeMap.get(event.appointmentTypeId)?.name ?? ''
-        const haystack = `${event.patientName} ${type} ${event.notes}`.toLowerCase()
-        return haystack.includes(searchQuery.toLowerCase())
+        return true
       }),
-    [events, visibleRange, searchQuery, appointmentTypeMap, viewMode, selectedDate],
+    [events, visibleRange, viewMode, selectedDate],
   )
 
   const scopedAvailability = useMemo(
@@ -225,15 +286,15 @@ const App = () => {
       return (
         visiblePractitioners.find((item) => item.id === scheduleFocusId) ??
         practitioners.find((item) => item.id === scheduleFocusId) ??
-        currentUser
+        viewer
       )
     }
     return (
-      visiblePractitioners.find((item) => item.isCurrentUser) ??
+      visiblePractitioners.find((item) => item.id === viewer.id) ??
       visiblePractitioners[0] ??
-      currentUser
+      viewer
     )
-  }, [visiblePractitioners, scheduleFocusId])
+  }, [visiblePractitioners, scheduleFocusId, viewer])
 
   const dayPractitioners = useMemo(() => {
     if (!scheduleFocusId) return visiblePractitioners
@@ -331,9 +392,17 @@ const App = () => {
   useEffect(() => {
     updateDragSelection(null)
     setIsCreatingEvent(false)
+    setLockCreatePractitioner(false)
+    setAppointmentTimeDraft(null)
     setIsEditingEvent(false)
     setDragAction(null)
   }, [calendarMode])
+
+  useEffect(() => {
+    if (!actionToast) return
+    const timer = window.setTimeout(() => setActionToast(null), 2600)
+    return () => window.clearTimeout(timer)
+  }, [actionToast])
 
   useEffect(() => {
     if (!selectedEvent) {
@@ -383,6 +452,7 @@ const App = () => {
                   onDate,
                 )
                 setActivePractitionerForDraft(practitionerId)
+                setLockCreatePractitioner(true)
                 setCreateEventKind('availability')
                 setIsCreatingEvent(true)
               },
@@ -473,43 +543,9 @@ const App = () => {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#eef3f8] text-slate-800">
-      <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/95 backdrop-blur-md">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#eef3f8] text-slate-800">
+      <header className="z-50 shrink-0 border-b border-slate-200/70 bg-white/95 backdrop-blur-md">
         <div className="flex h-[60px] items-center gap-3 px-4 min-[1440px]:px-6">
-          <div className="mr-1 hidden items-center gap-2 lg:flex">
-            <div className="grid size-7 place-items-center rounded-md bg-[#0f5f92] text-[11px] font-bold text-white">
-              R
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1 rounded-lg bg-slate-50 p-0.5 ring-1 ring-slate-200/80">
-            <button
-              type="button"
-              onClick={() => shiftDate(-1)}
-              className="grid size-8 place-items-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
-              title="Previous period"
-              aria-label="Previous period"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              onClick={goToToday}
-              className="h-8 rounded-md px-3 text-[12px] font-semibold text-slate-700 transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
-            >
-              Today
-            </button>
-            <button
-              type="button"
-              onClick={() => shiftDate(1)}
-              className="grid size-8 place-items-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
-              title="Next period"
-              aria-label="Next period"
-            >
-              →
-            </button>
-          </div>
-
           <div className="min-w-0 flex-1 pl-1">
             <h1 className="truncate text-[20px] font-bold tracking-tight text-slate-900 min-[1440px]:text-[22px]">
               {viewMode === 'day' ? dateTitle : shortDateTitle}
@@ -540,54 +576,89 @@ const App = () => {
             </button>
           </div>
 
-          <div className="hidden items-center rounded-lg bg-slate-100/90 p-1 md:flex" role="group" aria-label="Calendar view">
-            {(['day', 'week', 'month'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => changeView(mode)}
-                aria-pressed={viewMode === mode}
-                className={segmentClass(viewMode === mode)}
-              >
-                {mode[0].toUpperCase() + mode.slice(1)}
-              </button>
-            ))}
+          <div className="hidden items-center gap-1.5 md:flex">
+            <button
+              type="button"
+              onClick={() => shiftDate(-1)}
+              className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
+              title={
+                viewMode === 'day'
+                  ? 'Previous day'
+                  : viewMode === 'week'
+                    ? 'Previous week'
+                    : 'Previous month'
+              }
+              aria-label={
+                viewMode === 'day'
+                  ? 'Previous day'
+                  : viewMode === 'week'
+                    ? 'Previous week'
+                    : 'Previous month'
+              }
+            >
+              ←
+            </button>
+            <div className="flex items-center rounded-lg bg-slate-100/90 p-1" role="group" aria-label="Calendar view">
+              {(['day', 'week', 'month'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => changeView(mode)}
+                  aria-pressed={viewMode === mode}
+                  className={segmentClass(viewMode === mode)}
+                >
+                  {mode[0].toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => shiftDate(1)}
+              className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
+              title={viewMode === 'day' ? 'Next day' : viewMode === 'week' ? 'Next week' : 'Next month'}
+              aria-label={viewMode === 'day' ? 'Next day' : viewMode === 'week' ? 'Next week' : 'Next month'}
+            >
+              →
+            </button>
           </div>
 
-          <div className="relative hidden w-56 xl:block">
-            <label htmlFor="appointment-search" className="sr-only">
-              Search appointments
-            </label>
-            <input
-              id="appointment-search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search appointments"
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-[13px] outline-none transition focus:border-[#0f5f92]/50 focus:ring-2 focus:ring-[#0f5f92]/15"
-            />
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden>
-              ⌕
-            </span>
+          <div
+            className="flex items-center gap-1.5 rounded-xl bg-[#e8f4f8] p-1"
+            role="group"
+            aria-label="View as"
+          >
+            {(
+              [
+                { id: 'p5', label: 'Admin' },
+                { id: 'p1', label: 'Practitioner' },
+                { id: 'p2', label: 'Staff' },
+              ] as const
+            ).map((persona) => {
+              const active = viewer.id === persona.id
+              return (
+                <button
+                  key={persona.id}
+                  type="button"
+                  onClick={() => {
+                    setViewerId(persona.id)
+                    if (persona.id !== 'p5') {
+                      setShowAppointmentTypesPreview(false)
+                      setShowNewAppointmentTypeModal(false)
+                      setEditingAppointmentTypeId(null)
+                    }
+                  }}
+                  aria-pressed={active}
+                  className={`h-9 rounded-lg px-3 text-[12px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92] ${
+                    active
+                      ? 'bg-[#0f5f92] text-white shadow-[0_1px_2px_rgba(15,95,146,0.35)]'
+                      : 'bg-white/70 text-[#0f5f92] hover:bg-white'
+                  }`}
+                >
+                  {persona.label}
+                </button>
+              )
+            })}
           </div>
-
-          <button
-            type="button"
-            className="grid size-9 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
-            title="Notifications"
-            aria-label="Notifications"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-              <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5" />
-              <path d="M9.5 17a2.5 2.5 0 0 0 5 0" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="grid size-9 place-items-center rounded-full bg-[#e8f2f8] text-[12px] font-bold text-[#0f5f92] transition hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
-            aria-label="Thomas Reed profile"
-          >
-            TR
-          </button>
         </div>
 
         <div className="flex gap-2 border-t border-slate-100 px-5 py-2 lg:hidden">
@@ -603,23 +674,41 @@ const App = () => {
               Availability
             </button>
           </div>
-          <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-1">
-            {(['day', 'week', 'month'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => changeView(mode)}
-                className={`${segmentClass(viewMode === mode)} flex-1`}
-              >
-                {mode[0].toUpperCase() + mode.slice(1)}
-              </button>
-            ))}
+          <div className="flex flex-1 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => shiftDate(-1)}
+              className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600"
+              aria-label="Previous period"
+            >
+              ←
+            </button>
+            <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-1">
+              {(['day', 'week', 'month'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => changeView(mode)}
+                  className={`${segmentClass(viewMode === mode)} flex-1`}
+                >
+                  {mode[0].toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => shiftDate(1)}
+              className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600"
+              aria-label="Next period"
+            >
+              →
+            </button>
           </div>
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 lg:grid-cols-[300px_minmax(0,1fr)] min-[1440px]:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="flex max-h-[calc(100vh-60px)] flex-col gap-3 overflow-y-auto border-r border-slate-200/80 bg-white p-3.5">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)] min-[1440px]:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto border-r border-slate-200/80 bg-white p-3.5">
           <div className="rounded-2xl bg-[#f8fafc] p-4 ring-1 ring-slate-200/90">
             <div className="mb-3 flex items-center justify-between">
               <button
@@ -678,7 +767,8 @@ const App = () => {
           <button
             type="button"
             onClick={() => {
-              const practitionerId = visiblePractitioners[0]?.id ?? practitioners[0].id
+              const practitionerId =
+                scheduleFocusId ?? visiblePractitioners[0]?.id ?? practitioners[0].id
               // Prefill around 8:00–9:00 AM
               const eightAmSlot = Math.max(
                 0,
@@ -687,9 +777,12 @@ const App = () => {
               if (calendarMode === 'availability') {
                 openAvailabilityDraft(practitionerId, eightAmSlot, eightAmSlot + 1)
                 setActivePractitionerForDraft(practitionerId)
+                setLockCreatePractitioner(!!scheduleFocusId)
                 setCreateEventKind('availability')
               } else {
                 setCreateEventKind('appointment')
+                setActivePractitionerForDraft(practitionerId)
+                setLockCreatePractitioner(!!scheduleFocusId)
                 setAvailabilityDraft(null)
               }
               setIsCreatingEvent(true)
@@ -701,6 +794,20 @@ const App = () => {
           </button>
 
           <div className="flex flex-col gap-2.5">
+          {isAdminViewer ? (
+            <button
+              type="button"
+              onClick={() => setShowAppointmentTypesPreview(true)}
+              className={`flex w-full items-center justify-between rounded-xl px-3.5 py-3 text-left text-[13px] font-semibold transition ${
+                showAppointmentTypesPreview
+                  ? 'bg-[#0f5f92] text-white shadow-[0_2px_8px_rgba(15,95,146,0.2)]'
+                  : 'bg-[#eef6fb] text-[#0f5f92] ring-1 ring-[#0f5f92]/15 hover:bg-[#e2f0f8]'
+              }`}
+            >
+              <span>Preview Appointment</span>
+              <span className="text-[11px] font-bold opacity-80">Types</span>
+            </button>
+          ) : null}
           <FilterCard
             title="Team Members"
             open={openFilters.team}
@@ -838,13 +945,27 @@ const App = () => {
           ) : null}
         </aside>
 
+        {showAppointmentTypesPreview && isAdminViewer ? (
+          <AppointmentTypesPreview
+            types={appointmentTypeCatalog}
+            onAddNew={() => {
+              setEditingAppointmentTypeId(null)
+              setShowNewAppointmentTypeModal(true)
+            }}
+            onEdit={(type) => {
+              setEditingAppointmentTypeId(type.id)
+              setShowNewAppointmentTypeModal(true)
+            }}
+            onBack={() => setShowAppointmentTypesPreview(false)}
+          />
+        ) : (
         <main
           className={`flex min-h-0 min-w-0 flex-col overflow-hidden bg-white transition-colors duration-300 ${
             calendarMode === 'availability' ? 'bg-[linear-gradient(180deg,#f4fbf7_0%,#ffffff_120px)]' : ''
           }`}
         >
           <div
-            className={`flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 min-[1440px]:px-5 ${
+            className={`flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-2.5 min-[1440px]:px-5 ${
               calendarMode === 'availability'
                 ? 'border-b border-emerald-100 bg-emerald-50/40'
                 : 'border-b border-slate-100'
@@ -971,18 +1092,20 @@ const App = () => {
               className="relative min-h-0 flex-1 animate-[viewFade_.22s_ease-out] overflow-auto scroll-smooth"
             >
               {viewMode === 'week' ? (
-                <div className="border-b border-slate-200 bg-white px-4 py-2 text-[12px] font-semibold text-slate-600">
+                <div className="sticky top-0 z-40 border-b border-slate-200 bg-white px-4 py-2 text-[12px] font-semibold text-slate-600">
                   Week for {focusPractitioner.name} · {focusPractitioner.role} · {focusPractitioner.location}
                 </div>
               ) : null}
               <div
-                className="grid min-w-[960px]"
+                className="relative grid min-w-[960px]"
                 style={{
                   gridTemplateColumns: `${timeColumnWidth}px repeat(${Math.max(gridColumns.length, 1)}, minmax(140px, 1fr))`,
                 }}
               >
                 <div
-                  className="sticky left-0 top-0 z-30 flex items-end justify-end border-b border-r border-slate-200 bg-white/95 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 backdrop-blur"
+                  className={`sticky left-0 z-40 flex items-end justify-end border-b border-r border-slate-200 bg-white px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 shadow-[0_1px_0_rgba(15,23,42,0.06)] ${
+                    viewMode === 'week' ? 'top-9' : 'top-0'
+                  }`}
                   style={{ height: headerRowHeight }}
                 >
                   Time
@@ -1009,7 +1132,9 @@ const App = () => {
                         key={column.id}
                         type="button"
                         onClick={() => selectDate(column.date)}
-                        className={`sticky top-0 z-20 flex flex-col justify-center gap-0.5 border-b border-r border-slate-200 bg-white/95 px-3 text-left backdrop-blur transition hover:bg-slate-50 ${
+                        className={`sticky z-30 flex flex-col justify-center gap-0.5 border-b border-r border-slate-200 bg-white px-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-slate-50 ${
+                          viewMode === 'week' ? 'top-9' : 'top-0'
+                        } ${
                           isSameDay(column.date, selectedDate) ? 'ring-1 ring-inset ring-[#0f5f92]/30' : ''
                         }`}
                         style={{ height: headerRowHeight }}
@@ -1028,9 +1153,26 @@ const App = () => {
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => setSchedulePreviewId(p.id)}
-                      title={`View ${p.name}'s full day schedule`}
-                      className="sticky top-0 z-20 flex items-center gap-3 border-b border-r border-slate-200 bg-white/95 px-3 text-left backdrop-blur transition hover:bg-[#eef6fb]"
+                      onClick={() => {
+                        const eightAmSlot = Math.max(
+                          0,
+                          Math.floor((8 * 60 - GRID_START_MINUTES) / SLOT_MINUTES),
+                        )
+                        setActivePractitionerForDraft(p.id)
+                        setLockCreatePractitioner(true)
+                        if (calendarMode === 'availability') {
+                          openAvailabilityDraft(p.id, eightAmSlot, eightAmSlot + 1)
+                          setCreateEventKind('availability')
+                        } else {
+                          setCreateEventKind('appointment')
+                          setAvailabilityDraft(null)
+                        }
+                        setIsCreatingEvent(true)
+                      }}
+                      title={`Create ${calendarMode === 'availability' ? 'availability' : 'event'} for ${p.name}`}
+                      className={`sticky z-30 flex items-center gap-3 border-b border-r border-slate-200 bg-white px-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-[#eef6fb] ${
+                        viewMode === 'week' ? 'top-9' : 'top-0'
+                      }`}
                       style={{ height: headerRowHeight }}
                     >
                       <PractitionerAvatar name={p.name} size="lg" />
@@ -1053,17 +1195,28 @@ const App = () => {
                 {Array.from({ length: SLOT_COUNT }, (_, slotIndex) => (
                   <div key={slotIndex} className="contents">
                     <div
-                      className="sticky left-0 z-10 flex items-start justify-end border-b border-r border-slate-200 bg-white pr-2 pt-1 text-[11px] font-bold leading-none text-slate-600"
+                      className="sticky left-0 z-20 flex items-start justify-end border-b border-r border-slate-200 bg-white pr-2 pt-1 text-[11px] font-bold leading-none text-slate-600"
                       style={{ height: rowHeight }}
                     >
                       {slotIndexToLabel(slotIndex)}
                     </div>
                     {gridColumns.map((column) => {
                       const dateKey = toDateInputValue(column.date)
+                      const rangeStartKey = dragSelection
+                        ? dragSelection.startDateKey <= dragSelection.endDateKey
+                          ? dragSelection.startDateKey
+                          : dragSelection.endDateKey
+                        : ''
+                      const rangeEndKey = dragSelection
+                        ? dragSelection.startDateKey <= dragSelection.endDateKey
+                          ? dragSelection.endDateKey
+                          : dragSelection.startDateKey
+                        : ''
                       const isSelected =
                         !!dragSelection &&
                         dragSelection.practitionerId === column.practitionerId &&
-                        dragSelection.dateKey === dateKey &&
+                        dateKey >= rangeStartKey &&
+                        dateKey <= rangeEndKey &&
                         slotIndex >= Math.min(dragSelection.startSlot, dragSelection.endSlot) &&
                         slotIndex <= Math.max(dragSelection.startSlot, dragSelection.endSlot)
                       return (
@@ -1079,20 +1232,19 @@ const App = () => {
                           }`}
                           style={{ height: rowHeight }}
                           onMouseDown={(event) => {
-                            if (calendarMode !== 'availability') return
                             event.preventDefault()
-                            beginAvailabilityDrag(column.practitionerId, slotIndex, dateKey)
+                            beginSlotDrag(column.practitionerId, slotIndex, dateKey)
                           }}
                           onMouseEnter={() => {
                             const selection = dragSelectionRef.current
-                            if (
-                              !selection ||
-                              selection.practitionerId !== column.practitionerId ||
-                              selection.dateKey !== dateKey
-                            ) {
+                            if (!selection || selection.practitionerId !== column.practitionerId) {
                               return
                             }
-                            updateDragSelection({ ...selection, endSlot: slotIndex })
+                            updateDragSelection({
+                              ...selection,
+                              endSlot: slotIndex,
+                              endDateKey: dateKey,
+                            })
                           }}
                           onContextMenu={(event) => {
                             if (calendarMode !== 'availability') return
@@ -1109,8 +1261,8 @@ const App = () => {
                           }}
                           title={
                             calendarMode === 'availability'
-                              ? 'Click and drag to set availability'
-                              : 'Calendar slot'
+                              ? 'Click and drag across days to set availability'
+                              : 'Click and drag across days to create event'
                           }
                           aria-label={`${column.kind === 'day' ? column.date.toDateString() : column.practitioner.name} at ${slotIndexToLabel(slotIndex)}`}
                         />
@@ -1119,12 +1271,18 @@ const App = () => {
                   </div>
                 ))}
 
+                <div
+                  className="pointer-events-none absolute inset-0 z-[5] grid overflow-visible"
+                  style={{
+                    gridTemplateColumns: `${timeColumnWidth}px repeat(${Math.max(gridColumns.length, 1)}, minmax(140px, 1fr))`,
+                    gridTemplateRows: `${headerRowHeight}px repeat(${SLOT_COUNT}, ${rowHeight}px)`,
+                  }}
+                >
                 {renderedAvailability.map((availability) => {
                     const type = appointmentTypeMap.get(availability.appointmentTypeId || '')
                     const start = new Date(availability.start)
                     const end = new Date(availability.end)
                     const startSlot = minutesToSlotIndex(start.getHours() * 60 + start.getMinutes())
-                    const endSlot = minutesToSlotIndex(end.getHours() * 60 + end.getMinutes()) + 1
                     const column = gridColumns.findIndex((item) =>
                       item.kind === 'day'
                         ? isSameDay(item.date, start)
@@ -1132,10 +1290,18 @@ const App = () => {
                     )
                     if (column < 0) return null
                     const editable = calendarMode === 'availability'
+                    const endMinutes = end.getHours() * 60 + end.getMinutes()
+                    const exclusiveEndSlot = Math.max(
+                      startSlot + 1,
+                      Math.ceil((endMinutes - GRID_START_MINUTES) / SLOT_MINUTES),
+                    )
+                    const rowStart = startSlot + 2
+                    const rowEnd = exclusiveEndSlot + 2
+                    const blockHeight = Math.max((exclusiveEndSlot - startSlot) * rowHeight - 8, 88)
                     return (
                       <div
                         key={availability.id}
-                        className={`group relative z-[5] m-1 rounded-lg transition-all duration-200 ${
+                        className={`pointer-events-auto group relative z-[5] m-1 flex flex-col justify-start gap-0.5 overflow-visible rounded-lg px-2.5 py-1.5 transition-all duration-200 ${
                           editable ? 'cursor-pointer hover:brightness-[0.98]' : 'pointer-events-none'
                         } ${
                           recentlyCreatedAvailabilityIds.has(availability.id)
@@ -1144,7 +1310,9 @@ const App = () => {
                         } ${pendingAvailabilityIds.has(availability.id) ? 'opacity-70' : ''}`}
                         style={{
                           gridColumn: `${column + 2}`,
-                          gridRow: `${startSlot + 2} / ${Math.max(startSlot + 3, endSlot + 1)}`,
+                          gridRow: `${rowStart} / ${rowEnd}`,
+                          alignSelf: 'start',
+                          minHeight: blockHeight,
                           background:
                             availability.status === 'blocked'
                               ? 'repeating-linear-gradient(-45deg, #3d4953, #3d4953 4px, #566471 4px, #566471 8px)'
@@ -1182,11 +1350,18 @@ const App = () => {
                         aria-label={`${availability.status} from ${formatTime(start)} to ${formatTime(end)}`}
                       >
                         <div
-                          className={`pointer-events-none flex h-full flex-col justify-start gap-0.5 px-2.5 py-1.5 text-[11px] font-bold ${
+                          className={`pointer-events-none flex h-full flex-col justify-start gap-0.5 text-[11px] font-bold ${
                             availability.status === 'blocked' ? 'text-white' : 'text-slate-700'
                           }`}
                         >
                           <span>{availability.status.toUpperCase()}</span>
+                          <span
+                            className={`text-[10px] font-semibold ${
+                              availability.status === 'blocked' ? 'text-white/85' : 'text-slate-600/90'
+                            }`}
+                          >
+                            {formatTime(start)} – {formatTime(end)}
+                          </span>
                           {type ? (
                             <span
                               className={`w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${
@@ -1198,13 +1373,6 @@ const App = () => {
                               {type.name}
                             </span>
                           ) : null}
-                          <span
-                            className={`text-[10px] font-semibold ${
-                              availability.status === 'blocked' ? 'text-white/85' : 'text-slate-600/90'
-                            }`}
-                          >
-                            {formatTime(start)} – {formatTime(end)}
-                          </span>
                         </div>
                         {editable ? (
                           <>
@@ -1258,7 +1426,14 @@ const App = () => {
                     const start = new Date(eventItem.start)
                     const end = new Date(eventItem.end)
                     const startSlot = minutesToSlotIndex(start.getHours() * 60 + start.getMinutes())
-                    const endSlot = minutesToSlotIndex(end.getHours() * 60 + end.getMinutes()) + 1
+                    const endMinutes = end.getHours() * 60 + end.getMinutes()
+                    const exclusiveEndSlot = Math.max(
+                      startSlot + 1,
+                      Math.ceil((endMinutes - GRID_START_MINUTES) / SLOT_MINUTES),
+                    )
+                    const rowStart = startSlot + 2
+                    const rowEnd = exclusiveEndSlot + 2
+                    const blockHeight = Math.max((exclusiveEndSlot - startSlot) * rowHeight - 8, 88)
                     const column = gridColumns.findIndex((item) =>
                       item.kind === 'day'
                         ? isSameDay(item.date, start)
@@ -1272,12 +1447,14 @@ const App = () => {
                         key={eventItem.id}
                         role="button"
                         tabIndex={0}
-                        className={`group relative z-20 m-1 flex flex-col justify-start gap-0.5 overflow-hidden rounded-lg border border-white/35 px-2.5 py-1.5 text-left shadow-[0_2px_8px_rgba(16,40,70,0.16)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(16,40,70,0.2)] active:scale-[0.99] ${
+                        className={`pointer-events-auto group relative z-20 m-1 flex flex-col justify-start gap-0.5 overflow-visible rounded-lg border border-white/35 px-2.5 py-1.5 text-left shadow-[0_2px_8px_rgba(16,40,70,0.16)] transition-all duration-200 hover:z-30 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(16,40,70,0.2)] active:scale-[0.99] ${
                           interactive ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                         } ${pendingEventIds.has(eventItem.id) ? 'opacity-70' : ''}`}
                         style={{
                           gridColumn: `${column + 2}`,
-                          gridRow: `${startSlot + 2} / ${Math.max(startSlot + 3, endSlot + 1)}`,
+                          gridRow: `${rowStart} / ${rowEnd}`,
+                          alignSelf: 'start',
+                          minHeight: blockHeight,
                           background: type.color,
                           color: type.textColor,
                         }}
@@ -1303,7 +1480,7 @@ const App = () => {
                         title={`${eventItem.isExternal ? 'Busy — External' : eventItem.patientName} · ${type.name} · ${formatTime(start)} - ${formatTime(end)} · ${eventItem.location ?? 'No location'} · ${statusLabel}`}
                         aria-label={`${eventItem.isExternal ? 'Busy External' : eventItem.patientName}, ${type.name}, ${formatTime(start)} to ${formatTime(end)}, ${eventItem.location ?? 'no location'}, ${statusLabel}`}
                       >
-                        <div className="pointer-events-none flex items-start justify-between gap-1">
+                        <div className="pointer-events-none flex min-w-0 items-start justify-between gap-1">
                           <span className="truncate text-[13px] font-bold leading-tight">
                             {eventItem.isExternal ? 'Busy — External' : eventItem.patientName}
                           </span>
@@ -1357,6 +1534,7 @@ const App = () => {
                       </div>
                     )
                   })}
+                </div>
               </div>
 
               {showCurrentLine && currentTimeTop >= 0 && currentTimeTop <= SLOT_COUNT * rowHeight ? (
@@ -1372,6 +1550,7 @@ const App = () => {
             </div>
           )}
         </main>
+        )}
       </div>
 
       {schedulePreviewPractitioner ? (
@@ -1400,165 +1579,112 @@ const App = () => {
       ) : null}
 
       {selectedEvent && eventEditDraft ? (
-        <Modal
-          title={isEditingEvent ? 'Edit Appointment' : 'Appointment Details'}
+        <EventDetailsModal
+          event={selectedEvent}
+          draft={eventEditDraft}
+          isEditing={isEditingEvent}
+          appointmentType={appointmentTypeMap.get(selectedEvent.appointmentTypeId)}
+          practitioner={practitioners.find((p) => p.id === selectedEvent.practitionerId)}
+          bookableTypes={visibleTypes.filter((type) => type.id !== 'busy-external')}
+          updatedByName={viewer.name}
+          canModify={calendarMode === 'events' && !selectedEvent.isExternal}
           onClose={() => {
             setSelectedEventId(null)
             setIsEditingEvent(false)
           }}
-          footer={
-            <div className="flex justify-end gap-2">
-              {isEditingEvent ? (
-                <>
-                  <button
-                    className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium hover:bg-slate-50"
-                    onClick={() => setIsEditingEvent(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="h-10 rounded-lg bg-[#0f5f92] px-4 text-sm font-semibold text-white hover:brightness-110"
-                    onClick={() => {
-                      const day = new Date(selectedEvent.start)
-                      const start = setTimeForDate(day, eventEditDraft.startTime)
-                      const end = setTimeForDate(day, eventEditDraft.endTime)
-                      if (end <= start) return
-                      const patch: Partial<CalendarEvent> = {
-                        patientName: eventEditDraft.patientName,
-                        notes: eventEditDraft.notes,
-                        appointmentTypeId: eventEditDraft.appointmentTypeId,
-                        start: start.toISOString(),
-                        end: end.toISOString(),
-                      }
-                      void updateEvent(selectedEvent.id, patch)
-                      setIsEditingEvent(false)
-                      setSelectedEventId(null)
-                    }}
-                  >
-                    Save
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium hover:bg-slate-50 disabled:opacity-40"
-                    onClick={() => setIsEditingEvent(true)}
-                    disabled={calendarMode !== 'events' || !!selectedEvent.isExternal}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="h-10 rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
-                    onClick={() =>
-                      setPendingDelete({
-                        type: 'event',
-                        id: selectedEvent.id,
-                        label: selectedEvent.patientName,
-                      })
-                    }
-                    disabled={calendarMode !== 'events' || !!selectedEvent.isExternal}
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
-            </div>
+          onDraftChange={setEventEditDraft}
+          onStartEdit={() => setIsEditingEvent(true)}
+          onCancelEdit={() => setIsEditingEvent(false)}
+          onSave={() => {
+            const day = new Date(selectedEvent.start)
+            const start = setTimeForDate(day, eventEditDraft.startTime)
+            const end = setTimeForDate(day, eventEditDraft.endTime)
+            if (end <= start) return
+            void updateEvent(selectedEvent.id, {
+              patientName: eventEditDraft.patientName,
+              notes: eventEditDraft.notes,
+              appointmentTypeId: eventEditDraft.appointmentTypeId,
+              start: start.toISOString(),
+              end: end.toISOString(),
+            })
+            setIsEditingEvent(false)
+            setActionToast('Appointment updated')
+          }}
+          onDelete={() =>
+            setPendingDelete({
+              type: 'event',
+              id: selectedEvent.id,
+              label: selectedEvent.patientName,
+            })
           }
-        >
-          {isEditingEvent ? (
-            <div className="grid grid-cols-2 gap-4 text-sm max-[700px]:grid-cols-1">
-              <label className="flex flex-col gap-1">
-                Patient Name
-                <input
-                  className="rounded-lg border border-slate-200 px-3 py-2"
-                  value={eventEditDraft.patientName}
-                  onChange={(event) => setEventEditDraft({ ...eventEditDraft, patientName: event.target.value })}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                Appointment Type
-                <select
-                  className="rounded-lg border border-slate-200 px-3 py-2"
-                  value={eventEditDraft.appointmentTypeId}
-                  onChange={(event) =>
-                    setEventEditDraft({ ...eventEditDraft, appointmentTypeId: event.target.value })
-                  }
-                >
-                  {visibleTypes
-                    .filter((type) => type.id !== 'busy-external')
-                    .map((type) => (
-                      <option key={type.id} value={type.id}>
-                        {type.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                Start Time
-                <input
-                  className="rounded-lg border border-slate-200 px-3 py-2"
-                  value={eventEditDraft.startTime}
-                  onChange={(event) => setEventEditDraft({ ...eventEditDraft, startTime: event.target.value })}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                End Time
-                <input
-                  className="rounded-lg border border-slate-200 px-3 py-2"
-                  value={eventEditDraft.endTime}
-                  onChange={(event) => setEventEditDraft({ ...eventEditDraft, endTime: event.target.value })}
-                />
-              </label>
-              <label className="col-span-full flex flex-col gap-1">
-                Notes
-                <textarea
-                  className="min-h-24 rounded-lg border border-slate-200 px-3 py-2"
-                  value={eventEditDraft.notes}
-                  onChange={(event) => setEventEditDraft({ ...eventEditDraft, notes: event.target.value })}
-                />
-              </label>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 text-sm max-[700px]:grid-cols-1">
-              <Field label="Patient Name" value={selectedEvent.patientName} />
-              <Field
-                label="Appointment Type"
-                value={appointmentTypeMap.get(selectedEvent.appointmentTypeId)?.name ?? '-'}
-              />
-              <Field
-                label="Practitioner"
-                value={practitioners.find((p) => p.id === selectedEvent.practitionerId)?.name ?? '-'}
-              />
-              <Field label="Start Time" value={formatTime(new Date(selectedEvent.start))} />
-              <Field label="End Time" value={formatTime(new Date(selectedEvent.end))} />
-              <Field label="Location" value={selectedEvent.location ?? '—'} />
-              <Field label="Notes" value={selectedEvent.notes} />
-            </div>
-          )}
-        </Modal>
+          onGoToVisit={() => {
+            const visitDate = new Date(selectedEvent.start)
+            selectDate(visitDate)
+            if (viewMode !== 'day') changeView('day')
+            setScheduleFocusId(selectedEvent.practitionerId)
+            setSelectedEventId(null)
+            setActionToast(`Opened visit day for ${selectedEvent.patientName}`)
+          }}
+          onGoToPatientProfile={() => {
+            setActionToast(`Patient profile · ${selectedEvent.patientName}`)
+          }}
+          onSendFormReminder={() => {
+            setActionToast(`Form reminder sent to ${selectedEvent.patientName}`)
+          }}
+          onEmailPatient={() => {
+            const email = selectedEvent.patientName
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z]+/g, '.')
+              .replace(/^\.+|\.+$/g, '')
+            setActionToast(`Email drafted to ${email || 'patient'}@email.com`)
+          }}
+          onSaveNotes={(notes) => {
+            void updateEvent(selectedEvent.id, { notes })
+            setEventEditDraft((prev) => (prev ? { ...prev, notes } : prev))
+            setActionToast('Notes saved')
+          }}
+        />
+      ) : null}
+
+      {actionToast ? (
+        <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-lg bg-[#16202b] px-4 py-2.5 text-[12.5px] font-medium text-white shadow-[0_8px_24px_rgba(16,28,40,0.28)]">
+          {actionToast}
+        </div>
       ) : null}
 
       {isCreatingEvent ? (
         <CreateEventPanel
-          key={`create-${createEventKind}-${availabilityDraft?.startDate ?? 'new'}-${availabilityDraft?.startTime ?? 'default'}`}
+          key={`create-${createEventKind}-${activePractitionerForDraft ?? 'any'}-${appointmentTimeDraft?.startTime ?? availabilityDraft?.startTime ?? 'default'}-${appointmentTimeDraft?.endTime ?? availabilityDraft?.endTime ?? 'default'}-${toDateInputValue(appointmentTimeDraft?.date ?? selectedDate)}-${appointmentTimeDraft?.endDate ? toDateInputValue(appointmentTimeDraft.endDate) : 'same'}`}
           initialKind={createEventKind}
           appointmentTypes={appointmentTypeCatalog}
+          lockPractitioner={lockCreatePractitioner}
           appointmentDefaults={defaultAppointmentForm({
-            date: selectedDate,
-            practitionerId: visiblePractitioners[0]?.id ?? practitioners[0].id,
+            date: appointmentTimeDraft?.date ?? selectedDate,
+            endDate: appointmentTimeDraft?.endDate,
+            practitionerId:
+              activePractitionerForDraft ??
+              scheduleFocusId ??
+              visiblePractitioners[0]?.id ??
+              practitioners[0].id,
             appointmentTypeId:
               visibleTypes.find((type) => type.id !== 'busy-external')?.id ?? 'initial-visit',
+            startTime: appointmentTimeDraft?.startTime,
+            endTime: appointmentTimeDraft?.endTime,
           })}
           availabilityDefaults={
             availabilityDraft
               ? {
                   startDate: availabilityDraft.startDate,
-                  endDate: availabilityDraft.startDate,
+                  endDate: availabilityDraft.repeatUntil || availabilityDraft.startDate,
                   startTime: availabilityDraft.startTime,
                   endTime: availabilityDraft.endTime,
                   attendees: '',
                   practitionerId:
-                    activePractitionerForDraft ?? visiblePractitioners[0]?.id ?? practitioners[0].id,
+                    activePractitionerForDraft ??
+                    scheduleFocusId ??
+                    visiblePractitioners[0]?.id ??
+                    practitioners[0].id,
                   appointmentTypeIds: availabilityDraft.appointmentTypeId
                     ? [availabilityDraft.appointmentTypeId]
                     : ['initial-visit'],
@@ -1569,7 +1695,10 @@ const App = () => {
               : defaultAvailabilityForm({
                   date: selectedDate,
                   practitionerId:
-                    activePractitionerForDraft ?? visiblePractitioners[0]?.id ?? practitioners[0].id,
+                    activePractitionerForDraft ??
+                    scheduleFocusId ??
+                    visiblePractitioners[0]?.id ??
+                    practitioners[0].id,
                 })
           }
           onCancel={closeCreatePanel}
@@ -1577,17 +1706,28 @@ const App = () => {
           onCreateAppointment={(form) => {
             const location =
               form.meetingType === 'virtual' ? 'Virtual' : form.location || 'North Clinic'
+            const assignedFormNames = formsForAppointmentType(form.appointmentTypeId)
+              .filter((item) => form.assignedFormIds.includes(item.id))
+              .map((item) => item.name)
             void createEvent({
               practitionerId: form.practitionerId,
               patientName: form.patientName.trim(),
               appointmentTypeId: form.appointmentTypeId,
               startTime: form.startTime,
               endTime: form.endTime,
-              notes: [form.appointmentName, form.notes, form.attendees && `Attendees: ${form.attendees}`]
+              notes: [
+                form.appointmentName,
+                form.notes,
+                form.attendees && `Attendees: ${form.attendees}`,
+                assignedFormNames.length
+                  ? `Assigned forms (due ${form.formsDueDays}d before): ${assignedFormNames.join(', ')}`
+                  : null,
+              ]
                 .filter(Boolean)
                 .join('\n'),
               location,
               date: form.startDate,
+              endDate: form.endDate || form.startDate,
             })
             closeCreatePanel()
           }}
@@ -1634,12 +1774,13 @@ const App = () => {
 
       <ConfirmDialog
         open={!!pendingDelete}
-        title={pendingDelete?.type === 'event' ? 'Delete appointment?' : 'Delete availability?'}
+        title={pendingDelete?.type === 'event' ? 'Delete this appointment?' : 'Delete this availability?'}
         message={
           pendingDelete
-            ? `This will permanently remove ${pendingDelete.label}. This action cannot be undone.`
+            ? `Are you sure you want to delete ${pendingDelete.label}? This cannot be undone.`
             : ''
         }
+        confirmLabel="Yes, delete"
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
           if (!pendingDelete) return
@@ -1649,14 +1790,25 @@ const App = () => {
         }}
       />
 
-      {isLoading ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-white/40 pt-28 backdrop-blur-[1px]">
-          <div className="w-[420px] space-y-3 rounded-2xl bg-white p-5 shadow-xl ring-1 ring-slate-200">
-            <div className="h-5 w-36 animate-pulse rounded bg-slate-200" />
-            <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
-            <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
-          </div>
-        </div>
+      {showNewAppointmentTypeModal && isAdminViewer ? (
+        <NewAppointmentTypeModal
+          key={editingAppointmentTypeId ?? 'new-type'}
+          initialType={editingAppointmentType}
+          onCancel={() => {
+            setShowNewAppointmentTypeModal(false)
+            setEditingAppointmentTypeId(null)
+          }}
+          onSave={(form) => {
+            if (editingAppointmentTypeId) {
+              updateGlobalAppointmentType(editingAppointmentTypeId, form)
+            } else {
+              createGlobalAppointmentType(form)
+            }
+            setShowNewAppointmentTypeModal(false)
+            setEditingAppointmentTypeId(null)
+            setShowAppointmentTypesPreview(true)
+          }}
+        />
       ) : null}
     </div>
   )

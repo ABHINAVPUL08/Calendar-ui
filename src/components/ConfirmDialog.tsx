@@ -11,20 +11,20 @@ export const ConfirmDialog = ({
   open,
   title,
   message,
-  confirmLabel = 'Delete',
+  confirmLabel = 'Yes, delete',
   onConfirm,
   onCancel,
 }: Props) => {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[2px]">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
         aria-describedby="confirm-desc"
-        className="w-full max-w-md rounded-2xl bg-white p-5 shadow-[0_24px_60px_rgba(16,40,70,0.22)] ring-1 ring-slate-200/80"
+        className="w-full max-w-md rounded-2xl bg-white p-5 shadow-[0_24px_60px_rgba(16,40,70,0.28)] ring-1 ring-slate-200/80"
       >
         <h2 id="confirm-title" className="text-lg font-bold text-slate-900">
           {title}
