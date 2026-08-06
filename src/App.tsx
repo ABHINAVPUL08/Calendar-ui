@@ -1092,8 +1092,30 @@ const App = () => {
               className="relative min-h-0 flex-1 animate-[viewFade_.22s_ease-out] overflow-auto scroll-smooth"
             >
               {viewMode === 'week' ? (
-                <div className="sticky top-0 z-40 border-b border-slate-200 bg-white px-4 py-2 text-[12px] font-semibold text-slate-600">
-                  Week for {focusPractitioner.name} · {focusPractitioner.role} · {focusPractitioner.location}
+                <div className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 text-[12px] font-semibold text-slate-600">
+                  <span>
+                    Week for {focusPractitioner.name} · {focusPractitioner.role} ·{' '}
+                    {focusPractitioner.location}
+                  </span>
+                  <label className="flex items-center gap-2 font-medium text-slate-500">
+                    <span className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+                      Filter
+                    </span>
+                    <select
+                      className="h-8 min-w-[200px] rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 outline-none transition hover:border-[#0f5f92]/40 focus:border-[#0f5f92]/50 focus:ring-2 focus:ring-[#0f5f92]/15"
+                      value={focusPractitioner.id}
+                      onChange={(event) => setScheduleFocusId(event.target.value)}
+                      aria-label="Choose practitioner week"
+                    >
+                      {(visiblePractitioners.length ? visiblePractitioners : practitioners).map(
+                        (person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.name}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
                 </div>
               ) : null}
               <div

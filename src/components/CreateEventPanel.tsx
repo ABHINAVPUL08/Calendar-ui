@@ -59,6 +59,39 @@ type Props = {
 
 type Step = 'form' | 'preview'
 
+type EmailDraft = {
+  id: 1 | 2 | 3
+  name: string
+  intro: string
+  closing: string
+}
+
+const DEFAULT_EMAIL_DRAFTS: EmailDraft[] = [
+  {
+    id: 1,
+    name: 'Standard confirmation',
+    intro:
+      'Hey your appointment with {{practitioner}} has been booked.\nBelow are the details',
+    closing:
+      'Please complete the attached intake forms before your visit. If you need to reschedule, use the link below at least 24 hours in advance.',
+  },
+  {
+    id: 2,
+    name: 'Warm welcome',
+    intro:
+      'We look forward to seeing you for your visit with {{practitioner}}.\nHere is everything you need:',
+    closing:
+      'Feel free to reply to this email if you have questions. Please arrive 10 minutes early and complete any forms ahead of time.',
+  },
+  {
+    id: 3,
+    name: 'Brief reminder',
+    intro: 'Your appointment with {{practitioner}} is confirmed.\nDetails:',
+    closing:
+      'Reply STOP if you need to cancel. Forms and join details are included below when applicable.',
+  },
+]
+
 const fieldClass =
   'h-10 w-full rounded-[5px] border border-[#d3dce4] bg-white px-2.5 text-[13px] text-[#1c2b3a] outline-none transition focus:border-[#0f5f92]/50 focus:ring-2 focus:ring-[#0f5f92]/15'
 const labelClass = 'mb-1.5 block text-[11.5px] font-semibold text-[#3c4b5a]'
@@ -130,6 +163,11 @@ export const CreateEventPanel = ({
     () => appointmentDefaults.assignedFormIds ?? [],
   )
   const [formsDueDays, setFormsDueDays] = useState(appointmentDefaults.formsDueDays ?? 1)
+  const [selectedDraftId, setSelectedDraftId] = useState<1 | 2 | 3>(1)
+  const [emailDrafts, setEmailDrafts] = useState<EmailDraft[]>(() =>
+    DEFAULT_EMAIL_DRAFTS.map((draft) => ({ ...draft })),
+  )
+  const [editingDraft, setEditingDraft] = useState(false)
 
   const bookableTypes = useMemo(
     () => appointmentTypesForPractitioner(appointmentTypes, appointment.practitionerId),
@@ -166,6 +204,13 @@ export const CreateEventPanel = ({
         assignedForms.length ? assignedForms.map((f) => f.name).join(', ') : 'None'
       }.`
     : 'Select an appointment type to see a summary.'
+
+  const selectedDraft = emailDrafts.find((draft) => draft.id === selectedDraftId) ?? emailDrafts[0]
+  const draftIntro = selectedDraft.intro.replace(
+    /\{\{practitioner\}\}/g,
+    selectedPractitioner?.name ?? 'your practitioner',
+  )
+  const draftClosing = selectedDraft.closing
 
   const daysLabel = DOW_JS.filter((d) => repeatDays.includes(d))
     .map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d])
@@ -323,6 +368,10 @@ export const CreateEventPanel = ({
 
   const handleCancel = () => {
     if (step === 'preview') {
+      if (editingDraft) {
+        setEditingDraft(false)
+        return
+      }
       setStep('form')
       return
     }
@@ -410,13 +459,14 @@ export const CreateEventPanel = ({
 
         {step === 'preview' ? (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="flex items-center gap-2.5 border-y border-[#e6ddf3] bg-[#f4f0fa] px-6 py-2.5 text-[12px] text-[#584072]">
+            <div className="flex flex-wrap items-center gap-2.5 border-y border-[#e6ddf3] bg-[#f4f0fa] px-6 py-2.5 text-[12px] text-[#584072]">
               <span className="rounded-[3px] bg-[#7b5aa6] px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-white">
-                VIEW ONLY
+                {editingDraft ? 'EDITING DRAFT' : 'VIEW ONLY'}
               </span>
               <span>
-                Content, language and reminder timing are set by the practice. Editing arrives in a
-                later phase.
+                {editingDraft
+                  ? 'Edit this practitioner draft, then save. Language and reminder timing stay practice settings.'
+                  : 'Pick a practitioner draft below, or edit it before sending.'}
               </span>
             </div>
 
@@ -441,11 +491,24 @@ export const CreateEventPanel = ({
                   </div>
                   <div className="bg-white px-5 py-[18px] text-[12.5px] leading-[1.7] text-[#33414f]">
                     <div className="mb-3 font-semibold">Hi {appointment.patientName.trim()},</div>
-                    <div className="mb-3.5">
-                      Hey your appointment with {selectedPractitioner?.name} has been booked
-                      <br />
-                      Below are the details
-                    </div>
+                    {editingDraft ? (
+                      <textarea
+                        className="mb-3.5 min-h-[72px] w-full rounded-md border border-[#0f5f92]/35 bg-[#f6f9fb] px-3 py-2 text-[12.5px] leading-[1.7] text-[#33414f] outline-none focus:ring-2 focus:ring-[#0f5f92]/15"
+                        value={selectedDraft.intro}
+                        onChange={(event) =>
+                          setEmailDrafts((prev) =>
+                            prev.map((draft) =>
+                              draft.id === selectedDraftId
+                                ? { ...draft, intro: event.target.value }
+                                : draft,
+                            ),
+                          )
+                        }
+                        placeholder="Intro message — use {{practitioner}} for doctor name"
+                      />
+                    ) : (
+                      <div className="mb-3.5 whitespace-pre-line">{draftIntro}</div>
+                    )}
                     <div className="mb-3.5 flex flex-col gap-1.5 rounded-[5px] border border-[#e6ecf1] px-4 py-3.5">
                       {previewRows.map((row) => (
                         <div key={row.k} className="flex gap-3 text-[12px]">
@@ -454,10 +517,24 @@ export const CreateEventPanel = ({
                         </div>
                       ))}
                     </div>
-                    <div className="mb-3.5">
-                      Please complete the attached intake forms before your visit. If you need to
-                      reschedule, use the link below at least 24 hours in advance.
-                    </div>
+                    {editingDraft ? (
+                      <textarea
+                        className="mb-3.5 min-h-[72px] w-full rounded-md border border-[#0f5f92]/35 bg-[#f6f9fb] px-3 py-2 text-[12.5px] leading-[1.7] text-[#33414f] outline-none focus:ring-2 focus:ring-[#0f5f92]/15"
+                        value={selectedDraft.closing}
+                        onChange={(event) =>
+                          setEmailDrafts((prev) =>
+                            prev.map((draft) =>
+                              draft.id === selectedDraftId
+                                ? { ...draft, closing: event.target.value }
+                                : draft,
+                            ),
+                          )
+                        }
+                        placeholder="Closing message"
+                      />
+                    ) : (
+                      <div className="mb-3.5 whitespace-pre-line">{draftClosing}</div>
+                    )}
                     <div className="inline-block rounded bg-[#0e4f7c] px-[18px] py-2 text-[12px] font-semibold text-white">
                       Manage appointment
                     </div>
@@ -469,6 +546,75 @@ export const CreateEventPanel = ({
               </div>
 
               <div className="flex flex-col gap-[18px] p-[18px_22px]">
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-bold tracking-wide text-[#93a2b1] uppercase">
+                      Practitioner draft
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingDraft((prev) => !prev)}
+                      className={`rounded-[5px] px-2.5 py-1 text-[11.5px] font-semibold transition ${
+                        editingDraft
+                          ? 'bg-[#0e4f7c] text-white'
+                          : 'border border-[#d3dce4] bg-white text-[#0f5b8f] hover:bg-[#f2f8fc]'
+                      }`}
+                    >
+                      {editingDraft ? 'Done editing' : 'Edit draft'}
+                    </button>
+                  </div>
+                  <p className="mb-2 text-[11.5px] text-[#8b9aa8]">
+                    Choose draft 1, 2, or 3 for this patient email.
+                  </p>
+                  <div className="mb-2 flex gap-2">
+                    {emailDrafts.map((draft) => (
+                      <button
+                        key={draft.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDraftId(draft.id)
+                          setEditingDraft(false)
+                        }}
+                        className={`flex size-10 items-center justify-center rounded-lg text-[14px] font-bold transition ${
+                          selectedDraftId === draft.id
+                            ? 'bg-[#0e4f7c] text-white shadow-sm'
+                            : 'border border-[#d3dce4] bg-white text-[#3c4b5a] hover:-translate-y-0.5 hover:border-[#0e4f7c]/40 hover:shadow-sm'
+                        }`}
+                        aria-pressed={selectedDraftId === draft.id}
+                        title={draft.name}
+                      >
+                        {draft.id}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="rounded-[5px] border border-[#e2e8ee] bg-[#fbfcfd] px-3 py-2.5">
+                    {editingDraft ? (
+                      <input
+                        className="h-9 w-full rounded border border-[#d3dce4] bg-white px-2.5 text-[12.5px] font-semibold text-[#1c2b3a] outline-none focus:border-[#0f5f92]/50"
+                        value={selectedDraft.name}
+                        onChange={(event) =>
+                          setEmailDrafts((prev) =>
+                            prev.map((draft) =>
+                              draft.id === selectedDraftId
+                                ? { ...draft, name: event.target.value }
+                                : draft,
+                            ),
+                          )
+                        }
+                      />
+                    ) : (
+                      <>
+                        <p className="text-[12.5px] font-semibold text-[#1c2b3a]">
+                          Draft {selectedDraft.id} · {selectedDraft.name}
+                        </p>
+                        <p className="mt-1 text-[11px] leading-snug text-[#8b9aa8]">
+                          Selected for {selectedPractitioner?.name ?? 'practitioner'}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
                 <div>
                   <div className="mb-2 text-[10px] font-bold tracking-wide text-[#93a2b1] uppercase">
                     Language
