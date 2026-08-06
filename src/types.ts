@@ -27,6 +27,9 @@ export type AppointmentType = {
   bookingWindowDays?: number
   bufferBefore?: number
   bufferAfter?: number
+  /** single = one patient; multiple = group with maxLimit */
+  userType?: 'single' | 'multiple'
+  maxLimit?: number
 }
 
 export type CalendarEvent = {

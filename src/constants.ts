@@ -1,15 +1,15 @@
 import type { AppointmentType, AvailabilityStatus, Practitioner } from './types'
 
-/** First slot label: 8:00 AM */
-export const GRID_START_MINUTES = 8 * 60
-/** Last slot label: 11:00 PM */
-export const GRID_END_MINUTES = 23 * 60
+/** First slot label: 12:00 AM (midnight) — hospital runs 24 hours */
+export const GRID_START_MINUTES = 0
+/** Last slot label: 11:30 PM */
+export const GRID_END_MINUTES = 23 * 60 + 30
 export const SLOT_MINUTES = 30
 export const SLOT_COUNT = (GRID_END_MINUTES - GRID_START_MINUTES) / SLOT_MINUTES + 1
 
 /** @deprecated Prefer GRID_START_MINUTES — kept for callers expecting an hour */
 export const START_HOUR = Math.floor(GRID_START_MINUTES / 60)
-export const END_HOUR = Math.floor(GRID_END_MINUTES / 60)
+export const END_HOUR = 23
 
 export const practitioners: Practitioner[] = [
   { id: 'p1', name: 'Dr. Thomas Reed', role: 'Practitioner', location: 'North Clinic', isCurrentUser: true },
@@ -102,6 +102,10 @@ export const buildGlobalAppointmentType = (input: {
   modalities: Array<'in-person' | 'telehealth' | 'phone'>
   bufferBefore?: number
   bufferAfter?: number
+  noticeWindowHours?: number
+  bookingWindowDays?: number
+  userType?: 'single' | 'multiple'
+  maxLimit?: number
 }): AppointmentType => ({
   id: `global-${crypto.randomUUID().slice(0, 8)}`,
   name: input.name.trim(),
@@ -111,10 +115,12 @@ export const buildGlobalAppointmentType = (input: {
   baseDurationMin: input.baseDurationMin,
   patientClass: input.patientClass ?? 'both',
   modalities: input.modalities,
-  noticeWindowHours: 24,
-  bookingWindowDays: 60,
+  noticeWindowHours: input.noticeWindowHours ?? 24,
+  bookingWindowDays: input.bookingWindowDays ?? 60,
   bufferBefore: input.bufferBefore ?? 0,
   bufferAfter: input.bufferAfter ?? 0,
+  userType: input.userType ?? 'single',
+  maxLimit: input.userType === 'multiple' ? Math.max(1, input.maxLimit ?? 1) : 1,
 })
 
 export const canAccessAppointmentType = (type: AppointmentType, viewer: Practitioner = currentUser): boolean => {
@@ -167,8 +173,8 @@ export const availabilityColors: Record<AvailabilityStatus, string> = {
   blocked: 'rgba(209, 217, 224, 0.92)',
 }
 
-export const WHOLE_DAY_START = '8:00 AM'
-export const WHOLE_DAY_END = '6:00 PM'
+export const WHOLE_DAY_START = '12:00 AM'
+export const WHOLE_DAY_END = '11:30 PM'
 
 /** Intake / questionnaire forms a doctor can assign when booking an appointment. */
 export type PatientFormTemplate = {

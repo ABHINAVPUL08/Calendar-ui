@@ -1,4 +1,4 @@
-import { END_HOUR, GRID_START_MINUTES, SLOT_COUNT, SLOT_MINUTES } from './constants'
+import { GRID_START_MINUTES, SLOT_COUNT, SLOT_MINUTES } from './constants'
 
 export const toDateInputValue = (date: Date): string => {
   const y = date.getFullYear()
@@ -55,7 +55,7 @@ export const startOfWeek = (date: Date): Date => {
 }
 
 export const endOfDay = (date: Date): Date =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate(), END_HOUR, 0, 0, 0)
+  new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
 
 export const isSameDay = (a: Date, b: Date): boolean =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
