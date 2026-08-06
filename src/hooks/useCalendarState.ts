@@ -733,6 +733,10 @@ export const useCalendarState = () => {
     modalities: Array<'in-person' | 'telehealth' | 'phone'>
     bufferBefore?: number
     bufferAfter?: number
+    noticeWindowHours?: number
+    bookingWindowDays?: number
+    userType?: 'single' | 'multiple'
+    maxLimit?: number
   }) => {
     const trimmed = input.name.trim()
     if (!trimmed) return null
@@ -761,6 +765,10 @@ export const useCalendarState = () => {
       modalities: Array<'in-person' | 'telehealth' | 'phone'>
       bufferBefore?: number
       bufferAfter?: number
+      noticeWindowHours?: number
+      bookingWindowDays?: number
+      userType?: 'single' | 'multiple'
+      maxLimit?: number
     },
   ) => {
     const trimmed = input.name.trim()
@@ -774,6 +782,7 @@ export const useCalendarState = () => {
         type.name.toLowerCase() === trimmed.toLowerCase(),
     )
     if (nameTaken) return null
+    const userType = input.userType ?? existing.userType ?? 'single'
     const updated = {
       ...existing,
       name: trimmed,
@@ -784,9 +793,25 @@ export const useCalendarState = () => {
       modalities: input.modalities,
       bufferBefore: input.bufferBefore ?? 0,
       bufferAfter: input.bufferAfter ?? 0,
+      noticeWindowHours: input.noticeWindowHours ?? existing.noticeWindowHours ?? 24,
+      bookingWindowDays: input.bookingWindowDays ?? existing.bookingWindowDays ?? 60,
+      userType,
+      maxLimit: userType === 'multiple' ? Math.max(1, input.maxLimit ?? existing.maxLimit ?? 1) : 1,
     }
     setAppointmentTypeCatalog((prev) => prev.map((type) => (type.id === id ? updated : type)))
     return updated
+  }
+
+  const deleteGlobalAppointmentType = (id: string) => {
+    const existing = appointmentTypeCatalog.find((type) => type.id === id)
+    if (!existing || existing.scope !== 'global') return false
+    if (existing.id === 'busy-external') return false
+    setAppointmentTypeCatalog((prev) => prev.filter((type) => type.id !== id))
+    setFilters((prev) => ({
+      ...prev,
+      eventTypeIds: prev.eventTypeIds.filter((typeId) => typeId !== id),
+    }))
+    return true
   }
 
   const goToToday = () => {
@@ -832,6 +857,7 @@ export const useCalendarState = () => {
     createAppointmentType,
     createGlobalAppointmentType,
     updateGlobalAppointmentType,
+    deleteGlobalAppointmentType,
     moveEvent,
     resizeEvent,
     deleteAvailability,

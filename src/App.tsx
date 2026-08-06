@@ -75,6 +75,7 @@ const App = () => {
     createAppointmentType,
     createGlobalAppointmentType,
     updateGlobalAppointmentType,
+    deleteGlobalAppointmentType,
     moveEvent,
     resizeEvent,
     deleteAvailability,
@@ -113,7 +114,8 @@ const App = () => {
   const [showNewAppointmentTypeModal, setShowNewAppointmentTypeModal] = useState(false)
   const [editingAppointmentTypeId, setEditingAppointmentTypeId] = useState<string | null>(null)
   const [actionToast, setActionToast] = useState<string | null>(null)
-  const isAdminViewer = viewer.role === 'Admin'
+  const canConfigureAppointmentTypes =
+    viewer.role === 'Admin' || viewer.role === 'Practitioner'
   const editingAppointmentType = useMemo(
     () =>
       editingAppointmentTypeId
@@ -128,6 +130,7 @@ const App = () => {
   const [pendingDelete, setPendingDelete] = useState<
     | { type: 'event'; id: string; label: string }
     | { type: 'availability'; id: string; label: string }
+    | { type: 'appointment-type'; id: string; label: string }
     | null
   >(null)
   const [openFilters, setOpenFilters] = useState({
@@ -477,6 +480,19 @@ const App = () => {
     }))
   }
 
+  const allTeamSelected = practitioners.every((member) =>
+    filters.practitionerIds.includes(member.id),
+  )
+  const someTeamSelected =
+    !allTeamSelected && practitioners.some((member) => filters.practitionerIds.includes(member.id))
+
+  const toggleSelectAllTeam = () => {
+    setFilters((prev) => ({
+      ...prev,
+      practitionerIds: allTeamSelected ? [] : practitioners.map((member) => member.id),
+    }))
+  }
+
   const currentTimeTop = (() => {
     const minutes = now.getHours() * 60 + now.getMinutes()
     return ((minutes - GRID_START_MINUTES) / SLOT_MINUTES) * rowHeight
@@ -505,36 +521,12 @@ const App = () => {
     return cells
   }, [selectedDate])
 
-  const practitionerAvailabilityStatus = useMemo(() => {
-    const map = new Map<string, 'Available' | 'Busy' | 'Blocked' | 'No hours'>()
-    visiblePractitioners.forEach((p) => {
-      const dayBlocks = availabilityBlocks
-        .filter((block) => block.practitionerId === p.id && isSameDay(new Date(block.start), selectedDate))
-        .sort((a, b) => +new Date(a.start) - +new Date(b.start))
-      if (!dayBlocks.length) {
-        map.set(p.id, 'No hours')
-        return
-      }
-      if (dayBlocks.some((block) => block.status === 'available')) map.set(p.id, 'Available')
-      else if (dayBlocks.some((block) => block.status === 'busy')) map.set(p.id, 'Busy')
-      else map.set(p.id, 'Blocked')
-    })
-    return map
-  }, [visiblePractitioners, availabilityBlocks, selectedDate])
-
   const segmentClass = (active: boolean) =>
     `h-8 rounded-md px-3 text-[12px] font-semibold transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92] ${
       active
         ? 'bg-[#0f5f92] text-white shadow-[0_1px_2px_rgba(15,95,146,0.35)]'
         : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
     }`
-
-  const statusTone = (status: string) => {
-    if (status === 'Available') return 'text-emerald-600'
-    if (status === 'Busy') return 'text-slate-500'
-    if (status === 'Blocked') return 'text-slate-700'
-    return 'text-slate-400'
-  }
 
   return (
     <div className="flex h-dvh overflow-hidden bg-[#eef3f8] text-slate-800">
@@ -549,27 +541,57 @@ const App = () => {
             <p className="text-[10px] font-medium tracking-wide text-slate-400">Timezone · GMT-4</p>
           </div>
 
-          <div
-            className="hidden items-center rounded-lg bg-slate-100/90 p-0.5 lg:grid lg:grid-cols-2 lg:flex-none"
-            role="group"
-            aria-label="Calendar mode"
-          >
-            <button
-              type="button"
-              onClick={() => changeMode('events')}
-              aria-pressed={calendarMode === 'events'}
-              className={`${segmentClass(calendarMode === 'events')} min-w-[7rem]`}
+          <div className="hidden items-center gap-1.5 lg:flex">
+            {canConfigureAppointmentTypes ? (
+              <button
+                type="button"
+                onClick={() => setShowAppointmentTypesPreview(true)}
+                className={`grid size-8 shrink-0 place-items-center rounded-lg transition ${
+                  showAppointmentTypesPreview
+                    ? 'bg-[#0f5f92] text-white shadow-[0_2px_8px_rgba(15,95,146,0.2)]'
+                    : 'bg-[#eef6fb] text-[#0f5f92] ring-1 ring-[#0f5f92]/15 hover:bg-[#e2f0f8]'
+                }`}
+                title="Preview appointment types"
+                aria-label="Preview appointment types"
+              >
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.9 1.01 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+                </svg>
+              </button>
+            ) : null}
+            <div
+              className="items-center rounded-lg bg-slate-100/90 p-0.5 lg:grid lg:grid-cols-2 lg:flex-none"
+              role="group"
+              aria-label="Calendar mode"
             >
-              Events
-            </button>
-            <button
-              type="button"
-              onClick={() => changeMode('availability')}
-              aria-pressed={calendarMode === 'availability'}
-              className={`${segmentClass(calendarMode === 'availability')} min-w-[7rem]`}
-            >
-              Availability
-            </button>
+              <button
+                type="button"
+                onClick={() => changeMode('events')}
+                aria-pressed={calendarMode === 'events'}
+                className={`${segmentClass(calendarMode === 'events')} min-w-[7rem]`}
+              >
+                Events
+              </button>
+              <button
+                type="button"
+                onClick={() => changeMode('availability')}
+                aria-pressed={calendarMode === 'availability'}
+                className={`${segmentClass(calendarMode === 'availability')} min-w-[7rem]`}
+              >
+                Availability
+              </button>
+            </div>
           </div>
 
           <div className="hidden items-center gap-1.5 md:flex">
@@ -658,6 +680,34 @@ const App = () => {
         </div>
 
         <div className="flex gap-2 border-t border-slate-100 px-3 py-1.5 lg:hidden">
+          {canConfigureAppointmentTypes ? (
+            <button
+              type="button"
+              onClick={() => setShowAppointmentTypesPreview(true)}
+              className={`grid size-8 shrink-0 place-items-center rounded-lg transition ${
+                showAppointmentTypesPreview
+                  ? 'bg-[#0f5f92] text-white'
+                  : 'bg-[#eef6fb] text-[#0f5f92] ring-1 ring-[#0f5f92]/15'
+              }`}
+              title="Preview appointment types"
+              aria-label="Preview appointment types"
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.9 1.01 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+              </svg>
+            </button>
+          ) : null}
           <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-0.5">
             <button type="button" onClick={() => changeMode('events')} className={`${segmentClass(calendarMode === 'events')} flex-1`}>
               Events
@@ -760,64 +810,34 @@ const App = () => {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                const practitionerId =
-                  scheduleFocusId ?? visiblePractitioners[0]?.id ?? practitioners[0].id
-                // Prefill around 8:00–9:00 AM
-                const eightAmSlot = Math.max(
-                  0,
-                  Math.floor((8 * 60 - GRID_START_MINUTES) / SLOT_MINUTES),
-                )
-                if (calendarMode === 'availability') {
-                  openAvailabilityDraft(practitionerId, eightAmSlot, eightAmSlot + 1)
-                  setActivePractitionerForDraft(practitionerId)
-                  setLockCreatePractitioner(!!scheduleFocusId)
-                  setCreateEventKind('availability')
-                } else {
-                  setCreateEventKind('appointment')
-                  setActivePractitionerForDraft(practitionerId)
-                  setLockCreatePractitioner(!!scheduleFocusId)
-                  setAvailabilityDraft(null)
-                }
-                setIsCreatingEvent(true)
-              }}
-              className="btn-press flex h-10 min-w-0 flex-1 items-center justify-center rounded-lg bg-[#0f5f92] text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(15,95,146,0.22)] transition hover:brightness-110"
-              aria-label={calendarMode === 'availability' ? 'Create availability' : 'Create event'}
-            >
-              {calendarMode === 'availability' ? 'Create Availability' : 'Create Event'}
-            </button>
-            {isAdminViewer ? (
-              <button
-                type="button"
-                onClick={() => setShowAppointmentTypesPreview(true)}
-                className={`grid size-10 shrink-0 place-items-center rounded-lg transition ${
-                  showAppointmentTypesPreview
-                    ? 'bg-[#0f5f92] text-white shadow-[0_2px_8px_rgba(15,95,146,0.2)]'
-                    : 'bg-[#eef6fb] text-[#0f5f92] ring-1 ring-[#0f5f92]/15 hover:bg-[#e2f0f8]'
-                }`}
-                title="Preview appointment types"
-                aria-label="Preview appointment types"
-              >
-                <svg
-                  width="17"
-                  height="17"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.9 1.01 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-                </svg>
-              </button>
-            ) : null}
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const practitionerId =
+                scheduleFocusId ?? visiblePractitioners[0]?.id ?? practitioners[0].id
+              // Prefill around 8:00–9:00 AM
+              const eightAmSlot = Math.max(
+                0,
+                Math.floor((8 * 60 - GRID_START_MINUTES) / SLOT_MINUTES),
+              )
+              if (calendarMode === 'availability') {
+                openAvailabilityDraft(practitionerId, eightAmSlot, eightAmSlot + 1)
+                setActivePractitionerForDraft(practitionerId)
+                setLockCreatePractitioner(!!scheduleFocusId)
+                setCreateEventKind('availability')
+              } else {
+                setCreateEventKind('appointment')
+                setActivePractitionerForDraft(practitionerId)
+                setLockCreatePractitioner(!!scheduleFocusId)
+                setAvailabilityDraft(null)
+              }
+              setIsCreatingEvent(true)
+            }}
+            className="btn-press flex h-10 w-full shrink-0 items-center justify-center rounded-lg bg-[#0f5f92] text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(15,95,146,0.22)] transition hover:brightness-110"
+            aria-label={calendarMode === 'availability' ? 'Create availability' : 'Create event'}
+          >
+            {calendarMode === 'availability' ? 'Create Availability' : 'Create Event'}
+          </button>
 
           <div className="flex flex-col gap-2.5">
           <FilterCard
@@ -825,6 +845,18 @@ const App = () => {
             open={openFilters.team}
             onToggle={() => setOpenFilters((prev) => ({ ...prev, team: !prev.team }))}
           >
+            <label className="mb-1 flex cursor-pointer items-center gap-2.5 rounded-lg border-b border-slate-100 px-1.5 py-2 transition hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={allTeamSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someTeamSelected
+                }}
+                onChange={toggleSelectAllTeam}
+                className="size-4 accent-[#0f5f92]"
+              />
+              <span className="text-[13px] font-semibold text-slate-800">Select all</span>
+            </label>
             {practitioners.map((member) => (
               <label
                 key={member.id}
@@ -947,7 +979,7 @@ const App = () => {
           ) : null}
         </aside>
 
-        {showAppointmentTypesPreview && isAdminViewer ? (
+        {showAppointmentTypesPreview && canConfigureAppointmentTypes ? (
           <AppointmentTypesPreview
             types={appointmentTypeCatalog}
             onAddNew={() => {
@@ -1136,27 +1168,12 @@ const App = () => {
                 </div>
                 {gridColumns.map((column) => {
                   if (column.kind === 'day') {
-                    const status =
-                      practitionerAvailabilityStatus.get(focusPractitioner.id) &&
-                      isSameDay(column.date, selectedDate)
-                        ? practitionerAvailabilityStatus.get(focusPractitioner.id)!
-                        : (() => {
-                            const dayBlocks = availabilityBlocks.filter(
-                              (block) =>
-                                block.practitionerId === focusPractitioner.id &&
-                                isSameDay(new Date(block.start), column.date),
-                            )
-                            if (!dayBlocks.length) return 'No hours'
-                            if (dayBlocks.some((block) => block.status === 'available')) return 'Available'
-                            if (dayBlocks.some((block) => block.status === 'busy')) return 'Busy'
-                            return 'Blocked'
-                          })()
                     return (
                       <button
                         key={column.id}
                         type="button"
                         onClick={() => selectDate(column.date)}
-                        className={`sticky z-30 flex flex-col justify-center gap-0.5 border-b border-r border-slate-200 bg-white px-2.5 text-left shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-slate-50 ${
+                        className={`sticky z-30 flex flex-col items-center justify-center gap-0.5 border-b border-r border-slate-200 bg-white px-2.5 text-center shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-slate-50 ${
                           viewMode === 'week' ? 'top-8' : 'top-0'
                         } ${
                           isSameDay(column.date, selectedDate) ? 'ring-1 ring-inset ring-[#0f5f92]/30' : ''
@@ -1167,7 +1184,6 @@ const App = () => {
                           {column.date.toLocaleDateString([], { weekday: 'short' })}
                         </p>
                         <p className="text-[15px] font-bold text-slate-800">{column.date.getDate()}</p>
-                        <p className={`text-[10px] font-semibold ${statusTone(status)}`}>{status}</p>
                       </button>
                     )
                   }
@@ -1702,7 +1718,7 @@ const App = () => {
                 })
           }
           onCancel={closeCreatePanel}
-          onCreateAppointmentType={createAppointmentType}
+          onCreateGlobalAppointmentType={createGlobalAppointmentType}
           onCreateAppointment={(form) => {
             const location =
               form.meetingType === 'virtual' ? 'Virtual' : form.location || 'North Clinic'
@@ -1711,7 +1727,11 @@ const App = () => {
               .map((item) => item.name)
             void createEvent({
               practitionerId: form.practitionerId,
-              patientName: form.patientName.trim(),
+              patientName:
+                form.patientName.trim() ||
+                appointmentTypeCatalog.find((type) => type.id === form.appointmentTypeId)?.name ||
+                form.appointmentName ||
+                'Appointment',
               appointmentTypeId: form.appointmentTypeId,
               startTime: form.startTime,
               endTime: form.endTime,
@@ -1774,10 +1794,18 @@ const App = () => {
 
       <ConfirmDialog
         open={!!pendingDelete}
-        title={pendingDelete?.type === 'event' ? 'Delete this appointment?' : 'Delete this availability?'}
+        title={
+          pendingDelete?.type === 'event'
+            ? 'Delete this appointment?'
+            : pendingDelete?.type === 'appointment-type'
+              ? 'Are you sure to delete?'
+              : 'Delete this availability?'
+        }
         message={
           pendingDelete
-            ? `Are you sure you want to delete ${pendingDelete.label}? This cannot be undone.`
+            ? pendingDelete.type === 'appointment-type'
+              ? `Are you sure you want to delete “${pendingDelete.label}”? This cannot be undone.`
+              : `Are you sure you want to delete ${pendingDelete.label}? This cannot be undone.`
             : ''
         }
         confirmLabel="Yes, delete"
@@ -1785,12 +1813,18 @@ const App = () => {
         onConfirm={() => {
           if (!pendingDelete) return
           if (pendingDelete.type === 'event') void deleteEvent(pendingDelete.id)
-          else void deleteAvailability(pendingDelete.id)
+          else if (pendingDelete.type === 'availability') void deleteAvailability(pendingDelete.id)
+          else {
+            deleteGlobalAppointmentType(pendingDelete.id)
+            setShowNewAppointmentTypeModal(false)
+            setEditingAppointmentTypeId(null)
+            setShowAppointmentTypesPreview(true)
+          }
           setPendingDelete(null)
         }}
       />
 
-      {showNewAppointmentTypeModal && isAdminViewer ? (
+      {showNewAppointmentTypeModal && canConfigureAppointmentTypes ? (
         <NewAppointmentTypeModal
           key={editingAppointmentTypeId ?? 'new-type'}
           initialType={editingAppointmentType}
@@ -1808,6 +1842,16 @@ const App = () => {
             setEditingAppointmentTypeId(null)
             setShowAppointmentTypesPreview(true)
           }}
+          onDelete={
+            editingAppointmentTypeId && editingAppointmentType
+              ? () =>
+                  setPendingDelete({
+                    type: 'appointment-type',
+                    id: editingAppointmentTypeId,
+                    label: editingAppointmentType.name,
+                  })
+              : undefined
+          }
         />
       ) : null}
       </div>

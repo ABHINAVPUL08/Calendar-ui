@@ -9,6 +9,7 @@ import {
 import { formatTime, parseDateInput, setTimeForDate, toDateInputValue } from '../date-utils'
 import type { AppointmentType, AvailabilityFormState, AvailabilityStatus } from '../types'
 import { TimePickerField } from './TimePickerField'
+import { NewAppointmentTypeModal, type AppointmentTypeForm } from './NewAppointmentTypeModal'
 
 export type CreateEventKind = 'appointment' | 'availability'
 
@@ -54,7 +55,7 @@ type Props = {
   onCancel: () => void
   onCreateAppointment: (form: CreateAppointmentForm) => void
   onCreateAvailability: (form: CreateAvailabilityForm) => void
-  onCreateAppointmentType: (name: string, ownerPractitionerId: string) => AppointmentType | null
+  onCreateGlobalAppointmentType: (form: AppointmentTypeForm) => AppointmentType | null
 }
 
 type Step = 'form' | 'preview'
@@ -135,7 +136,7 @@ export const CreateEventPanel = ({
   onCancel,
   onCreateAppointment,
   onCreateAvailability,
-  onCreateAppointmentType,
+  onCreateGlobalAppointmentType,
 }: Props) => {
   const [kind, setKind] = useState<CreateEventKind>(initialKind)
   const [step, setStep] = useState<Step>('form')
@@ -156,9 +157,7 @@ export const CreateEventPanel = ({
     }
     return days.length ? days : [start.getDay()]
   })
-  const [showAddAppointmentType, setShowAddAppointmentType] = useState(false)
-  const [showAddApptPrivateType, setShowAddApptPrivateType] = useState(false)
-  const [newApptPrivateTypeName, setNewApptPrivateTypeName] = useState('')
+  const [showNewTypeModal, setShowNewTypeModal] = useState(false)
   const [assignedFormIds, setAssignedFormIds] = useState<string[]>(
     () => appointmentDefaults.assignedFormIds ?? [],
   )
@@ -181,6 +180,7 @@ export const CreateEventPanel = ({
   const privateAvail = availabilityTypes.filter((type) => type.scope === 'private')
 
   const selectedApptType = bookableTypes.find((type) => type.id === appointment.appointmentTypeId)
+  const showPatientName = selectedApptType?.userType !== 'multiple'
   const selectedPractitioner = practitioners.find((p) => p.id === appointment.practitionerId)
   const availabilityPractitioner = practitioners.find((p) => p.id === availability.practitionerId)
 
@@ -263,11 +263,13 @@ export const CreateEventPanel = ({
   const pickAppointmentType = (id: string) => {
     const type = bookableTypes.find((item) => item.id === id)
     const duration = typeDuration(type)
+    const isMultiple = type?.userType === 'multiple'
     setAppointment((prev) => ({
       ...prev,
       appointmentTypeId: id,
       appointmentName: type?.name ?? prev.appointmentName,
       endTime: addMinutesToTimeLabel(prev.startTime, duration),
+      patientName: isMultiple ? '' : prev.patientName,
     }))
     // Forms list changes with type — clear previous assignments
     setAssignedFormIds([])
@@ -294,39 +296,31 @@ export const CreateEventPanel = ({
     return date.toLocaleDateString('en-US', { month: 'numeric', day: '2-digit', year: 'numeric' })
   }
 
-  const addPrivateType = (practitionerId: string) => {
-    const created = onCreateAppointmentType(availability.newTypeName, practitionerId)
-    if (!created) return false
+  const handleCreatedAppointmentType = (form: AppointmentTypeForm) => {
+    const created = onCreateGlobalAppointmentType(form)
+    if (!created) return
+    setShowNewTypeModal(false)
+    if (kind === 'appointment') {
+      setAppointment((prev) => ({
+        ...prev,
+        appointmentTypeId: created.id,
+        appointmentName: created.name,
+        endTime: addMinutesToTimeLabel(prev.startTime, typeDuration(created)),
+        patientName: created.userType === 'multiple' ? '' : prev.patientName,
+      }))
+      setAssignedFormIds([])
+      return
+    }
     setAvailability((prev) => ({
       ...prev,
-      newTypeName: '',
       appointmentTypeIds: prev.appointmentTypeIds.includes(created.id)
         ? prev.appointmentTypeIds
         : [...prev.appointmentTypeIds, created.id],
     }))
-    setShowAddAppointmentType(false)
-    return true
-  }
-
-  const addApptPrivateType = () => {
-    if (!appointment.practitionerId) return false
-    const created = onCreateAppointmentType(newApptPrivateTypeName, appointment.practitionerId)
-    if (!created) return false
-    setNewApptPrivateTypeName('')
-    setShowAddApptPrivateType(false)
-    setAppointment((prev) => ({
-      ...prev,
-      appointmentTypeId: created.id,
-      appointmentName: created.name,
-      endTime: addMinutesToTimeLabel(prev.startTime, typeDuration(created)),
-      endDate: prev.startDate,
-    }))
-    setAssignedFormIds([])
-    return true
   }
 
   const canSubmitAppointment =
-    !!appointment.patientName.trim() &&
+    (!showPatientName || !!appointment.patientName.trim()) &&
     !!appointment.practitionerId &&
     !!appointment.appointmentTypeId &&
     !!appointment.startDate &&
@@ -597,20 +591,22 @@ export const CreateEventPanel = ({
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-1.5 pb-5">
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div className="flex flex-col gap-[15px]">
-                <label>
-                  <span className={labelClass}>
-                    Patient
-                    {required}
-                  </span>
-                  <input
-                    className={fieldClass}
-                    value={appointment.patientName}
-                    onChange={(event) =>
-                      setAppointment({ ...appointment, patientName: event.target.value })
-                    }
-                    placeholder="Enter patient name"
-                  />
-                </label>
+                {showPatientName ? (
+                  <label>
+                    <span className={labelClass}>
+                      Patient
+                      {required}
+                    </span>
+                    <input
+                      className={fieldClass}
+                      value={appointment.patientName}
+                      onChange={(event) =>
+                        setAppointment({ ...appointment, patientName: event.target.value })
+                      }
+                      placeholder="Enter patient name"
+                    />
+                  </label>
+                ) : null}
 
                 <label>
                   <span className={labelClass}>
@@ -811,63 +807,13 @@ export const CreateEventPanel = ({
                       </label>
                     ))}
 
-                    {showAddApptPrivateType ? (
-                      <div className="border-t border-dashed border-[#e2e8ee] bg-white p-3">
-                        {!appointment.practitionerId ? (
-                          <p className="text-[12px] text-[#8b9aa8]">
-                            Select a practitioner first. The new type stays private to them only.
-                          </p>
-                        ) : (
-                          <>
-                            <div className="flex gap-2">
-                              <input
-                                className={`${fieldClass} flex-1`}
-                                value={newApptPrivateTypeName}
-                                onChange={(event) => setNewApptPrivateTypeName(event.target.value)}
-                                placeholder="Private type name"
-                                autoFocus
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    event.preventDefault()
-                                    addApptPrivateType()
-                                  }
-                                }}
-                              />
-                              <button
-                                type="button"
-                                disabled={!newApptPrivateTypeName.trim()}
-                                onClick={addApptPrivateType}
-                                className="h-10 shrink-0 rounded-[5px] bg-[#0e4f7c] px-3 text-[12px] font-semibold text-white disabled:opacity-40"
-                              >
-                                Save
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowAddApptPrivateType(false)
-                                  setNewApptPrivateTypeName('')
-                                }}
-                                className="h-10 shrink-0 rounded-[5px] border border-[#d3dce4] px-3 text-[12px] font-medium text-[#3c4b5a]"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                            <p className="mt-2 text-[11px] text-[#8b9aa8]">
-                              Only this practitioner (plus Staff/Admin) will see this type — not other
-                              practitioners.
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setShowAddApptPrivateType(true)}
-                        className="w-full border-none border-t border-dashed border-[#e2e8ee] bg-white px-3 py-2.5 text-left text-[12px] font-semibold text-[#0f5b8f] hover:bg-[#f6f9fb]"
-                      >
-                        + Add Appointment Type
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowNewTypeModal(true)}
+                      className="w-full border-none border-t border-dashed border-[#e2e8ee] bg-white px-3 py-2.5 text-left text-[12px] font-semibold text-[#0f5b8f] hover:bg-[#f6f9fb]"
+                    >
+                      + Add Appointment Type
+                    </button>
                   </div>
                 </div>
 
@@ -1202,52 +1148,13 @@ export const CreateEventPanel = ({
                       <span className="flex-1 text-[12.5px] text-[#1c2b3a]">Blocked</span>
                     </label>
 
-                    {showAddAppointmentType ? (
-                      <div className="border-t border-dashed border-[#e2e8ee] bg-white p-3">
-                        <div className="flex gap-2">
-                          <input
-                            className={`${fieldClass} flex-1`}
-                            value={availability.newTypeName}
-                            onChange={(event) =>
-                              setAvailability({
-                                ...availability,
-                                newTypeName: event.target.value,
-                              })
-                            }
-                            placeholder="Private type name"
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            disabled={
-                              !availability.practitionerId || !availability.newTypeName.trim()
-                            }
-                            onClick={() => addPrivateType(availability.practitionerId)}
-                            className="h-10 shrink-0 rounded-[5px] bg-[#0e4f7c] px-3 text-[12px] font-semibold text-white disabled:opacity-40"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowAddAppointmentType(false)
-                              setAvailability((prev) => ({ ...prev, newTypeName: '' }))
-                            }}
-                            className="h-10 shrink-0 rounded-[5px] border border-[#d3dce4] px-3 text-[12px] font-medium text-[#3c4b5a]"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setShowAddAppointmentType(true)}
-                        className="w-full border-none border-t border-dashed border-[#e2e8ee] bg-white px-3 py-2.5 text-left text-[12px] font-semibold text-[#0f5b8f]"
-                      >
-                        + Add Appointment Type
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowNewTypeModal(true)}
+                      className="w-full border-none border-t border-dashed border-[#e2e8ee] bg-white px-3 py-2.5 text-left text-[12px] font-semibold text-[#0f5b8f]"
+                    >
+                      + Add Appointment Type
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1282,6 +1189,12 @@ export const CreateEventPanel = ({
           </div>
         </div>
       </div>
+      {showNewTypeModal ? (
+        <NewAppointmentTypeModal
+          onCancel={() => setShowNewTypeModal(false)}
+          onSave={handleCreatedAppointmentType}
+        />
+      ) : null}
     </div>
   )
 }
