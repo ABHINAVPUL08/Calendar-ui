@@ -164,10 +164,6 @@ export const CreateEventPanel = ({
   )
   const [formsDueDays, setFormsDueDays] = useState(appointmentDefaults.formsDueDays ?? 1)
   const [selectedDraftId, setSelectedDraftId] = useState<1 | 2 | 3>(1)
-  const [emailDrafts, setEmailDrafts] = useState<EmailDraft[]>(() =>
-    DEFAULT_EMAIL_DRAFTS.map((draft) => ({ ...draft })),
-  )
-  const [editingDraft, setEditingDraft] = useState(false)
 
   const bookableTypes = useMemo(
     () => appointmentTypesForPractitioner(appointmentTypes, appointment.practitionerId),
@@ -205,7 +201,8 @@ export const CreateEventPanel = ({
       }.`
     : 'Select an appointment type to see a summary.'
 
-  const selectedDraft = emailDrafts.find((draft) => draft.id === selectedDraftId) ?? emailDrafts[0]
+  const selectedDraft =
+    DEFAULT_EMAIL_DRAFTS.find((draft) => draft.id === selectedDraftId) ?? DEFAULT_EMAIL_DRAFTS[0]
   const draftIntro = selectedDraft.intro.replace(
     /\{\{practitioner\}\}/g,
     selectedPractitioner?.name ?? 'your practitioner',
@@ -368,10 +365,6 @@ export const CreateEventPanel = ({
 
   const handleCancel = () => {
     if (step === 'preview') {
-      if (editingDraft) {
-        setEditingDraft(false)
-        return
-      }
       setStep('form')
       return
     }
@@ -461,13 +454,9 @@ export const CreateEventPanel = ({
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="flex flex-wrap items-center gap-2.5 border-y border-[#e6ddf3] bg-[#f4f0fa] px-6 py-2.5 text-[12px] text-[#584072]">
               <span className="rounded-[3px] bg-[#7b5aa6] px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-white">
-                {editingDraft ? 'EDITING DRAFT' : 'VIEW ONLY'}
+                VIEW ONLY
               </span>
-              <span>
-                {editingDraft
-                  ? 'Edit this practitioner draft, then save. Language and reminder timing stay practice settings.'
-                  : 'Pick a practitioner draft below, or edit it before sending.'}
-              </span>
+              <span>Choose a practitioner draft above the message, then send.</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-[1.35fr_1fr]">
@@ -490,25 +479,32 @@ export const CreateEventPanel = ({
                     </div>
                   </div>
                   <div className="bg-white px-5 py-[18px] text-[12.5px] leading-[1.7] text-[#33414f]">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-semibold tracking-wide text-[#93a2b1] uppercase">
+                        Choose draft
+                      </span>
+                      {DEFAULT_EMAIL_DRAFTS.map((draft) => (
+                        <button
+                          key={draft.id}
+                          type="button"
+                          onClick={() => setSelectedDraftId(draft.id)}
+                          className={`flex size-8 items-center justify-center rounded-lg text-[13px] font-bold transition ${
+                            selectedDraftId === draft.id
+                              ? 'bg-[#0e4f7c] text-white shadow-sm'
+                              : 'border border-[#d3dce4] bg-white text-[#3c4b5a] hover:-translate-y-0.5 hover:border-[#0e4f7c]/40 hover:shadow-sm'
+                          }`}
+                          aria-pressed={selectedDraftId === draft.id}
+                          title={draft.name}
+                        >
+                          {draft.id}
+                        </button>
+                      ))}
+                      <span className="text-[11.5px] text-[#8b9aa8]">
+                        Draft {selectedDraft.id} · {selectedDraft.name}
+                      </span>
+                    </div>
                     <div className="mb-3 font-semibold">Hi {appointment.patientName.trim()},</div>
-                    {editingDraft ? (
-                      <textarea
-                        className="mb-3.5 min-h-[72px] w-full rounded-md border border-[#0f5f92]/35 bg-[#f6f9fb] px-3 py-2 text-[12.5px] leading-[1.7] text-[#33414f] outline-none focus:ring-2 focus:ring-[#0f5f92]/15"
-                        value={selectedDraft.intro}
-                        onChange={(event) =>
-                          setEmailDrafts((prev) =>
-                            prev.map((draft) =>
-                              draft.id === selectedDraftId
-                                ? { ...draft, intro: event.target.value }
-                                : draft,
-                            ),
-                          )
-                        }
-                        placeholder="Intro message — use {{practitioner}} for doctor name"
-                      />
-                    ) : (
-                      <div className="mb-3.5 whitespace-pre-line">{draftIntro}</div>
-                    )}
+                    <div className="mb-3.5 whitespace-pre-line">{draftIntro}</div>
                     <div className="mb-3.5 flex flex-col gap-1.5 rounded-[5px] border border-[#e6ecf1] px-4 py-3.5">
                       {previewRows.map((row) => (
                         <div key={row.k} className="flex gap-3 text-[12px]">
@@ -517,24 +513,7 @@ export const CreateEventPanel = ({
                         </div>
                       ))}
                     </div>
-                    {editingDraft ? (
-                      <textarea
-                        className="mb-3.5 min-h-[72px] w-full rounded-md border border-[#0f5f92]/35 bg-[#f6f9fb] px-3 py-2 text-[12.5px] leading-[1.7] text-[#33414f] outline-none focus:ring-2 focus:ring-[#0f5f92]/15"
-                        value={selectedDraft.closing}
-                        onChange={(event) =>
-                          setEmailDrafts((prev) =>
-                            prev.map((draft) =>
-                              draft.id === selectedDraftId
-                                ? { ...draft, closing: event.target.value }
-                                : draft,
-                            ),
-                          )
-                        }
-                        placeholder="Closing message"
-                      />
-                    ) : (
-                      <div className="mb-3.5 whitespace-pre-line">{draftClosing}</div>
-                    )}
+                    <div className="mb-3.5 whitespace-pre-line">{draftClosing}</div>
                     <div className="inline-block rounded bg-[#0e4f7c] px-[18px] py-2 text-[12px] font-semibold text-white">
                       Manage appointment
                     </div>
@@ -546,75 +525,6 @@ export const CreateEventPanel = ({
               </div>
 
               <div className="flex flex-col gap-[18px] p-[18px_22px]">
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="text-[10px] font-bold tracking-wide text-[#93a2b1] uppercase">
-                      Practitioner draft
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setEditingDraft((prev) => !prev)}
-                      className={`rounded-[5px] px-2.5 py-1 text-[11.5px] font-semibold transition ${
-                        editingDraft
-                          ? 'bg-[#0e4f7c] text-white'
-                          : 'border border-[#d3dce4] bg-white text-[#0f5b8f] hover:bg-[#f2f8fc]'
-                      }`}
-                    >
-                      {editingDraft ? 'Done editing' : 'Edit draft'}
-                    </button>
-                  </div>
-                  <p className="mb-2 text-[11.5px] text-[#8b9aa8]">
-                    Choose draft 1, 2, or 3 for this patient email.
-                  </p>
-                  <div className="mb-2 flex gap-2">
-                    {emailDrafts.map((draft) => (
-                      <button
-                        key={draft.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedDraftId(draft.id)
-                          setEditingDraft(false)
-                        }}
-                        className={`flex size-10 items-center justify-center rounded-lg text-[14px] font-bold transition ${
-                          selectedDraftId === draft.id
-                            ? 'bg-[#0e4f7c] text-white shadow-sm'
-                            : 'border border-[#d3dce4] bg-white text-[#3c4b5a] hover:-translate-y-0.5 hover:border-[#0e4f7c]/40 hover:shadow-sm'
-                        }`}
-                        aria-pressed={selectedDraftId === draft.id}
-                        title={draft.name}
-                      >
-                        {draft.id}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="rounded-[5px] border border-[#e2e8ee] bg-[#fbfcfd] px-3 py-2.5">
-                    {editingDraft ? (
-                      <input
-                        className="h-9 w-full rounded border border-[#d3dce4] bg-white px-2.5 text-[12.5px] font-semibold text-[#1c2b3a] outline-none focus:border-[#0f5f92]/50"
-                        value={selectedDraft.name}
-                        onChange={(event) =>
-                          setEmailDrafts((prev) =>
-                            prev.map((draft) =>
-                              draft.id === selectedDraftId
-                                ? { ...draft, name: event.target.value }
-                                : draft,
-                            ),
-                          )
-                        }
-                      />
-                    ) : (
-                      <>
-                        <p className="text-[12.5px] font-semibold text-[#1c2b3a]">
-                          Draft {selectedDraft.id} · {selectedDraft.name}
-                        </p>
-                        <p className="mt-1 text-[11px] leading-snug text-[#8b9aa8]">
-                          Selected for {selectedPractitioner?.name ?? 'practitioner'}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-
                 <div>
                   <div className="mb-2 text-[10px] font-bold tracking-wide text-[#93a2b1] uppercase">
                     Language
@@ -1339,11 +1249,6 @@ export const CreateEventPanel = ({
                       </button>
                     )}
                   </div>
-                </div>
-
-                <div className="rounded-[5px] border border-[#f0e0c4] bg-[#fff8ec] px-3.5 py-3 text-[11.5px] leading-[1.55] text-[#6b5426]">
-                  Leaving all types unchecked keeps this window open to every type the practice
-                  offers.
                 </div>
               </div>
             </div>

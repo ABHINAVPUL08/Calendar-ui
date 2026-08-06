@@ -98,8 +98,10 @@ export const buildGlobalAppointmentType = (input: {
   color: string
   textColor: string
   baseDurationMin: number
-  patientClass: 'new' | 'existing' | 'both'
+  patientClass?: 'new' | 'existing' | 'both'
   modalities: Array<'in-person' | 'telehealth' | 'phone'>
+  bufferBefore?: number
+  bufferAfter?: number
 }): AppointmentType => ({
   id: `global-${crypto.randomUUID().slice(0, 8)}`,
   name: input.name.trim(),
@@ -107,12 +109,12 @@ export const buildGlobalAppointmentType = (input: {
   textColor: input.textColor,
   scope: 'global',
   baseDurationMin: input.baseDurationMin,
-  patientClass: input.patientClass,
+  patientClass: input.patientClass ?? 'both',
   modalities: input.modalities,
   noticeWindowHours: 24,
   bookingWindowDays: 60,
-  bufferBefore: 0,
-  bufferAfter: 0,
+  bufferBefore: input.bufferBefore ?? 0,
+  bufferAfter: input.bufferAfter ?? 0,
 })
 
 export const canAccessAppointmentType = (type: AppointmentType, viewer: Practitioner = currentUser): boolean => {
@@ -162,7 +164,7 @@ export const buildPrivateAppointmentType = (
 export const availabilityColors: Record<AvailabilityStatus, string> = {
   available: 'rgba(166, 234, 185, 0.72)',
   busy: 'rgba(209, 217, 224, 0.92)',
-  blocked: 'rgba(72, 84, 95, 0.97)',
+  blocked: 'rgba(209, 217, 224, 0.92)',
 }
 
 export const WHOLE_DAY_START = '8:00 AM'
