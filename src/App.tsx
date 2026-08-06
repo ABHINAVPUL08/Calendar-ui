@@ -24,6 +24,7 @@ import {
 import { CreateEventPanel, buildAvailabilityForms, defaultAppointmentForm, defaultAvailabilityForm } from './components/CreateEventPanel'
 import { AppointmentTypesPreview } from './components/AppointmentTypesPreview'
 import { NewAppointmentTypeModal } from './components/NewAppointmentTypeModal'
+import { AppNavRail } from './components/AppNavRail'
 import { EventDetailsModal } from './components/EventDetailsModal'
 import { ContextMenu } from './components/ContextMenu'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -33,9 +34,9 @@ import { PractitionerDaySchedule } from './components/PractitionerDaySchedule'
 import { useCalendarState } from './hooks/useCalendarState'
 import type { AppointmentType, AvailabilityFormState, CalendarEvent } from './types'
 
-const rowHeight = 48
-const timeColumnWidth = 78
-const headerRowHeight = 104
+const rowHeight = 36
+const timeColumnWidth = 64
+const headerRowHeight = 56
 
 type DragAction =
   | { kind: 'availability'; type: 'move' | 'resize-start' | 'resize-end'; id: string; startY: number }
@@ -522,7 +523,7 @@ const App = () => {
   }, [visiblePractitioners, availabilityBlocks, selectedDate])
 
   const segmentClass = (active: boolean) =>
-    `h-10 rounded-md px-4 text-[13px] font-semibold transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92] ${
+    `h-8 rounded-md px-3 text-[12px] font-semibold transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92] ${
       active
         ? 'bg-[#0f5f92] text-white shadow-[0_1px_2px_rgba(15,95,146,0.35)]'
         : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
@@ -535,26 +536,21 @@ const App = () => {
     return 'text-slate-400'
   }
 
-  const statusDot = (status: string) => {
-    if (status === 'Available') return 'bg-emerald-500'
-    if (status === 'Busy') return 'bg-slate-400'
-    if (status === 'Blocked') return 'bg-slate-700'
-    return 'bg-slate-300'
-  }
-
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-[#eef3f8] text-slate-800">
+    <div className="flex h-dvh overflow-hidden bg-[#eef3f8] text-slate-800">
+      <AppNavRail />
+      <div className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden">
       <header className="z-50 shrink-0 border-b border-slate-200/70 bg-white/95 backdrop-blur-md">
-        <div className="flex h-[60px] items-center gap-3 px-4 min-[1440px]:px-6">
-          <div className="min-w-0 flex-1 pl-1">
-            <h1 className="truncate text-[20px] font-bold tracking-tight text-slate-900 min-[1440px]:text-[22px]">
+        <div className="flex h-[48px] items-center gap-2.5 px-3 min-[1440px]:px-4">
+          <div className="min-w-0 flex-1 pl-0.5">
+            <h1 className="truncate text-[16px] font-bold tracking-tight text-slate-900 min-[1440px]:text-[17px]">
               {viewMode === 'day' ? dateTitle : shortDateTitle}
             </h1>
-            <p className="text-[11px] font-medium tracking-wide text-slate-400">Timezone · GMT-4</p>
+            <p className="text-[10px] font-medium tracking-wide text-slate-400">Timezone · GMT-4</p>
           </div>
 
           <div
-            className="hidden items-center rounded-lg bg-slate-100/90 p-1 lg:grid lg:grid-cols-2 lg:flex-none"
+            className="hidden items-center rounded-lg bg-slate-100/90 p-0.5 lg:grid lg:grid-cols-2 lg:flex-none"
             role="group"
             aria-label="Calendar mode"
           >
@@ -562,7 +558,7 @@ const App = () => {
               type="button"
               onClick={() => changeMode('events')}
               aria-pressed={calendarMode === 'events'}
-              className={`${segmentClass(calendarMode === 'events')} min-w-[8.5rem]`}
+              className={`${segmentClass(calendarMode === 'events')} min-w-[7rem]`}
             >
               Events
             </button>
@@ -570,7 +566,7 @@ const App = () => {
               type="button"
               onClick={() => changeMode('availability')}
               aria-pressed={calendarMode === 'availability'}
-              className={`${segmentClass(calendarMode === 'availability')} min-w-[8.5rem]`}
+              className={`${segmentClass(calendarMode === 'availability')} min-w-[7rem]`}
             >
               Availability
             </button>
@@ -580,7 +576,7 @@ const App = () => {
             <button
               type="button"
               onClick={() => shiftDate(-1)}
-              className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
+              className="grid size-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
               title={
                 viewMode === 'day'
                   ? 'Previous day'
@@ -598,7 +594,7 @@ const App = () => {
             >
               ←
             </button>
-            <div className="flex items-center rounded-lg bg-slate-100/90 p-1" role="group" aria-label="Calendar view">
+            <div className="flex items-center rounded-lg bg-slate-100/90 p-0.5" role="group" aria-label="Calendar view">
               {(['day', 'week', 'month'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -614,7 +610,7 @@ const App = () => {
             <button
               type="button"
               onClick={() => shiftDate(1)}
-              className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
+              className="grid size-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
               title={viewMode === 'day' ? 'Next day' : viewMode === 'week' ? 'Next week' : 'Next month'}
               aria-label={viewMode === 'day' ? 'Next day' : viewMode === 'week' ? 'Next week' : 'Next month'}
             >
@@ -623,7 +619,7 @@ const App = () => {
           </div>
 
           <div
-            className="flex items-center gap-1.5 rounded-xl bg-[#e8f4f8] p-1"
+            className="flex items-center gap-1 rounded-xl bg-[#e8f4f8] p-0.5"
             role="group"
             aria-label="View as"
           >
@@ -661,8 +657,8 @@ const App = () => {
           </div>
         </div>
 
-        <div className="flex gap-2 border-t border-slate-100 px-5 py-2 lg:hidden">
-          <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-1">
+        <div className="flex gap-2 border-t border-slate-100 px-3 py-1.5 lg:hidden">
+          <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-0.5">
             <button type="button" onClick={() => changeMode('events')} className={`${segmentClass(calendarMode === 'events')} flex-1`}>
               Events
             </button>
@@ -678,12 +674,12 @@ const App = () => {
             <button
               type="button"
               onClick={() => shiftDate(-1)}
-              className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600"
+              className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600"
               aria-label="Previous period"
             >
               ←
             </button>
-            <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-1">
+            <div className="flex flex-1 items-center rounded-lg bg-slate-100 p-0.5">
               {(['day', 'week', 'month'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -698,7 +694,7 @@ const App = () => {
             <button
               type="button"
               onClick={() => shiftDate(1)}
-              className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600"
+              className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600"
               aria-label="Next period"
             >
               →
@@ -707,45 +703,45 @@ const App = () => {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)] min-[1440px]:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto border-r border-slate-200/80 bg-white p-3.5">
-          <div className="rounded-2xl bg-[#f8fafc] p-4 ring-1 ring-slate-200/90">
-            <div className="mb-3 flex items-center justify-between">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[248px_minmax(0,1fr)] min-[1440px]:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="flex min-h-0 flex-col gap-2 overflow-y-auto border-r border-slate-200/80 bg-white p-2.5">
+          <div className="rounded-xl bg-[#f8fafc] p-2.5 ring-1 ring-slate-200/90">
+            <div className="mb-2 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => selectDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1))}
-                className="grid size-10 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-white"
+                className="grid size-8 place-items-center rounded-lg text-lg text-slate-500 transition hover:bg-white"
                 aria-label="Previous month"
               >
                 ‹
               </button>
-              <strong className="text-[18px] font-bold tracking-tight text-slate-900">
+              <strong className="text-[14px] font-bold tracking-tight text-slate-900">
                 {selectedDate.toLocaleDateString([], { month: 'long', year: 'numeric' })}
               </strong>
               <button
                 type="button"
                 onClick={() => selectDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 1))}
-                className="grid size-10 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-white"
+                className="grid size-8 place-items-center rounded-lg text-lg text-slate-500 transition hover:bg-white"
                 aria-label="Next month"
               >
                 ›
               </button>
             </div>
-            <div className="mb-2 grid grid-cols-7 text-center text-[13px] font-bold uppercase tracking-wide text-slate-500">
+            <div className="mb-1.5 grid grid-cols-7 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500">
               {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
                 <span key={`${d}-${i}`} className={`py-1.5 ${i === 6 ? 'text-rose-400' : ''}`}>
                   {d}
                 </span>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-y-2">
+            <div className="grid grid-cols-7 gap-y-1">
               {miniMonthDays.map((day, idx) =>
                 day ? (
                   <button
                     key={day.toISOString()}
                     type="button"
                     onClick={() => selectDate(day)}
-                    className={`mx-auto flex size-10 items-center justify-center rounded-full text-[14px] font-bold transition ${
+                    className={`mx-auto flex size-8 items-center justify-center rounded-full text-[12px] font-bold transition ${
                       isSameDay(day, selectedDate)
                         ? 'bg-[#0f5f92] text-white shadow-md'
                         : isSameDay(day, now)
@@ -758,56 +754,72 @@ const App = () => {
                     {day.getDate()}
                   </button>
                 ) : (
-                  <span key={`empty-${idx}`} className="size-10" />
+                  <span key={`empty-${idx}`} className="size-8" />
                 ),
               )}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              const practitionerId =
-                scheduleFocusId ?? visiblePractitioners[0]?.id ?? practitioners[0].id
-              // Prefill around 8:00–9:00 AM
-              const eightAmSlot = Math.max(
-                0,
-                Math.floor((8 * 60 - GRID_START_MINUTES) / SLOT_MINUTES),
-              )
-              if (calendarMode === 'availability') {
-                openAvailabilityDraft(practitionerId, eightAmSlot, eightAmSlot + 1)
-                setActivePractitionerForDraft(practitionerId)
-                setLockCreatePractitioner(!!scheduleFocusId)
-                setCreateEventKind('availability')
-              } else {
-                setCreateEventKind('appointment')
-                setActivePractitionerForDraft(practitionerId)
-                setLockCreatePractitioner(!!scheduleFocusId)
-                setAvailabilityDraft(null)
-              }
-              setIsCreatingEvent(true)
-            }}
-            className="btn-press flex h-12 w-full shrink-0 items-center justify-center rounded-xl bg-[#0f5f92] text-[14px] font-semibold text-white shadow-[0_4px_12px_rgba(15,95,146,0.22)] transition hover:brightness-110"
-            aria-label={calendarMode === 'availability' ? 'Create availability' : 'Create event'}
-          >
-            {calendarMode === 'availability' ? 'Create Availability' : 'Create Event'}
-          </button>
-
-          <div className="flex flex-col gap-2.5">
-          {isAdminViewer ? (
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setShowAppointmentTypesPreview(true)}
-              className={`flex w-full items-center justify-between rounded-xl px-3.5 py-3 text-left text-[13px] font-semibold transition ${
-                showAppointmentTypesPreview
-                  ? 'bg-[#0f5f92] text-white shadow-[0_2px_8px_rgba(15,95,146,0.2)]'
-                  : 'bg-[#eef6fb] text-[#0f5f92] ring-1 ring-[#0f5f92]/15 hover:bg-[#e2f0f8]'
-              }`}
+              onClick={() => {
+                const practitionerId =
+                  scheduleFocusId ?? visiblePractitioners[0]?.id ?? practitioners[0].id
+                // Prefill around 8:00–9:00 AM
+                const eightAmSlot = Math.max(
+                  0,
+                  Math.floor((8 * 60 - GRID_START_MINUTES) / SLOT_MINUTES),
+                )
+                if (calendarMode === 'availability') {
+                  openAvailabilityDraft(practitionerId, eightAmSlot, eightAmSlot + 1)
+                  setActivePractitionerForDraft(practitionerId)
+                  setLockCreatePractitioner(!!scheduleFocusId)
+                  setCreateEventKind('availability')
+                } else {
+                  setCreateEventKind('appointment')
+                  setActivePractitionerForDraft(practitionerId)
+                  setLockCreatePractitioner(!!scheduleFocusId)
+                  setAvailabilityDraft(null)
+                }
+                setIsCreatingEvent(true)
+              }}
+              className="btn-press flex h-10 min-w-0 flex-1 items-center justify-center rounded-lg bg-[#0f5f92] text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(15,95,146,0.22)] transition hover:brightness-110"
+              aria-label={calendarMode === 'availability' ? 'Create availability' : 'Create event'}
             >
-              <span>Preview Appointment</span>
-              <span className="text-[11px] font-bold opacity-80">Types</span>
+              {calendarMode === 'availability' ? 'Create Availability' : 'Create Event'}
             </button>
-          ) : null}
+            {isAdminViewer ? (
+              <button
+                type="button"
+                onClick={() => setShowAppointmentTypesPreview(true)}
+                className={`grid size-10 shrink-0 place-items-center rounded-lg transition ${
+                  showAppointmentTypesPreview
+                    ? 'bg-[#0f5f92] text-white shadow-[0_2px_8px_rgba(15,95,146,0.2)]'
+                    : 'bg-[#eef6fb] text-[#0f5f92] ring-1 ring-[#0f5f92]/15 hover:bg-[#e2f0f8]'
+                }`}
+                title="Preview appointment types"
+                aria-label="Preview appointment types"
+              >
+                <svg
+                  width="17"
+                  height="17"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.9 1.01 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+                </svg>
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2.5">
           <FilterCard
             title="Team Members"
             open={openFilters.team}
@@ -928,17 +940,7 @@ const App = () => {
                   <span className="h-3 w-5 rounded" style={{ background: availabilityColors.available }} /> Available
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="h-3 w-5 rounded" style={{ background: availabilityColors.busy }} /> Busy
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-3 w-5 rounded"
-                    style={{
-                      background:
-                        'repeating-linear-gradient(-45deg, #3d4953, #3d4953 3px, #566471 3px, #566471 6px)',
-                    }}
-                  />{' '}
-                  Blocked
+                  <span className="h-3 w-5 rounded" style={{ background: availabilityColors.blocked }} /> Blocked
                 </div>
               </div>
             </div>
@@ -965,21 +967,21 @@ const App = () => {
           }`}
         >
           <div
-            className={`flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-2.5 min-[1440px]:px-5 ${
+            className={`flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-1.5 min-[1440px]:px-4 ${
               calendarMode === 'availability'
                 ? 'border-b border-emerald-100 bg-emerald-50/40'
                 : 'border-b border-slate-100'
             }`}
           >
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 {scheduleFocusId
                   ? `${focusPractitioner.name}'s day`
                   : calendarMode === 'events'
                     ? 'Schedule'
                     : 'Set availability'}
               </p>
-              <p className="text-[13px] text-slate-600">
+              <p className="text-[12px] text-slate-600">
                 {scheduleFocusId
                   ? 'Full-day free, busy, blocked, and booked times for this staff member'
                   : calendarMode === 'events'
@@ -1092,7 +1094,7 @@ const App = () => {
               className="relative min-h-0 flex-1 animate-[viewFade_.22s_ease-out] overflow-auto scroll-smooth"
             >
               {viewMode === 'week' ? (
-                <div className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 text-[12px] font-semibold text-slate-600">
+                <div className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600">
                   <span>
                     Week for {focusPractitioner.name} · {focusPractitioner.role} ·{' '}
                     {focusPractitioner.location}
@@ -1121,12 +1123,12 @@ const App = () => {
               <div
                 className="relative grid min-w-[960px]"
                 style={{
-                  gridTemplateColumns: `${timeColumnWidth}px repeat(${Math.max(gridColumns.length, 1)}, minmax(140px, 1fr))`,
+                  gridTemplateColumns: `${timeColumnWidth}px repeat(${Math.max(gridColumns.length, 1)}, minmax(120px, 1fr))`,
                 }}
               >
                 <div
-                  className={`sticky left-0 z-40 flex items-end justify-end border-b border-r border-slate-200 bg-white px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 shadow-[0_1px_0_rgba(15,23,42,0.06)] ${
-                    viewMode === 'week' ? 'top-9' : 'top-0'
+                  className={`sticky left-0 z-40 flex items-end justify-end border-b border-r border-slate-200 bg-white px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 shadow-[0_1px_0_rgba(15,23,42,0.06)] ${
+                    viewMode === 'week' ? 'top-8' : 'top-0'
                   }`}
                   style={{ height: headerRowHeight }}
                 >
@@ -1154,23 +1156,22 @@ const App = () => {
                         key={column.id}
                         type="button"
                         onClick={() => selectDate(column.date)}
-                        className={`sticky z-30 flex flex-col justify-center gap-0.5 border-b border-r border-slate-200 bg-white px-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-slate-50 ${
-                          viewMode === 'week' ? 'top-9' : 'top-0'
+                        className={`sticky z-30 flex flex-col justify-center gap-0.5 border-b border-r border-slate-200 bg-white px-2.5 text-left shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-slate-50 ${
+                          viewMode === 'week' ? 'top-8' : 'top-0'
                         } ${
                           isSameDay(column.date, selectedDate) ? 'ring-1 ring-inset ring-[#0f5f92]/30' : ''
                         }`}
                         style={{ height: headerRowHeight }}
                       >
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                           {column.date.toLocaleDateString([], { weekday: 'short' })}
                         </p>
-                        <p className="text-[18px] font-bold text-slate-800">{column.date.getDate()}</p>
+                        <p className="text-[15px] font-bold text-slate-800">{column.date.getDate()}</p>
                         <p className={`text-[10px] font-semibold ${statusTone(status)}`}>{status}</p>
                       </button>
                     )
                   }
                   const p = column.practitioner
-                  const status = practitionerAvailabilityStatus.get(p.id) ?? 'No hours'
                   return (
                     <button
                       key={p.id}
@@ -1192,23 +1193,17 @@ const App = () => {
                         setIsCreatingEvent(true)
                       }}
                       title={`Create ${calendarMode === 'availability' ? 'availability' : 'event'} for ${p.name}`}
-                      className={`sticky z-30 flex items-center gap-3 border-b border-r border-slate-200 bg-white px-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-[#eef6fb] ${
-                        viewMode === 'week' ? 'top-9' : 'top-0'
+                      className={`sticky z-30 flex items-center gap-2 border-b border-r border-slate-200 bg-white px-2.5 text-left shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-[#eef6fb] ${
+                        viewMode === 'week' ? 'top-8' : 'top-0'
                       }`}
                       style={{ height: headerRowHeight }}
                     >
-                      <PractitionerAvatar name={p.name} size="lg" />
+                      <PractitionerAvatar name={p.name} size="md" />
                       <div className="min-w-0 flex-1 leading-snug">
-                        <p className="flex items-start gap-1.5 text-[15px] font-bold tracking-tight text-slate-900">
-                          <span
-                            className={`mt-1.5 size-2 shrink-0 rounded-full ${statusDot(status)}`}
-                            aria-hidden
-                          />
-                          <span className="line-clamp-2 break-words hyphens-auto">{p.name}</span>
+                        <p className="line-clamp-2 break-words hyphens-auto text-[13px] font-bold tracking-tight text-slate-900">
+                          {p.name}
                         </p>
-                        <p className="mt-0.5 truncate text-[12px] font-semibold text-slate-600">{p.role}</p>
-                        <p className="truncate text-[12px] font-medium text-slate-500">{p.location}</p>
-                        <p className={`mt-0.5 truncate text-[11px] font-bold ${statusTone(status)}`}>{status}</p>
+                        <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-600">{p.role}</p>
                       </div>
                     </button>
                   )
@@ -1217,7 +1212,7 @@ const App = () => {
                 {Array.from({ length: SLOT_COUNT }, (_, slotIndex) => (
                   <div key={slotIndex} className="contents">
                     <div
-                      className="sticky left-0 z-20 flex items-start justify-end border-b border-r border-slate-200 bg-white pr-2 pt-1 text-[11px] font-bold leading-none text-slate-600"
+                      className="sticky left-0 z-20 flex items-start justify-end border-b border-r border-slate-200 bg-white pr-1.5 pt-0.5 text-[10px] font-bold leading-none text-slate-600"
                       style={{ height: rowHeight }}
                     >
                       {slotIndexToLabel(slotIndex)}
@@ -1296,7 +1291,7 @@ const App = () => {
                 <div
                   className="pointer-events-none absolute inset-0 z-[5] grid overflow-visible"
                   style={{
-                    gridTemplateColumns: `${timeColumnWidth}px repeat(${Math.max(gridColumns.length, 1)}, minmax(140px, 1fr))`,
+                    gridTemplateColumns: `${timeColumnWidth}px repeat(${Math.max(gridColumns.length, 1)}, minmax(120px, 1fr))`,
                     gridTemplateRows: `${headerRowHeight}px repeat(${SLOT_COUNT}, ${rowHeight}px)`,
                   }}
                 >
@@ -1319,7 +1314,7 @@ const App = () => {
                     )
                     const rowStart = startSlot + 2
                     const rowEnd = exclusiveEndSlot + 2
-                    const blockHeight = Math.max((exclusiveEndSlot - startSlot) * rowHeight - 8, 88)
+                    const blockHeight = Math.max((exclusiveEndSlot - startSlot) * rowHeight - 6, 52)
                     return (
                       <div
                         key={availability.id}
@@ -1335,10 +1330,7 @@ const App = () => {
                           gridRow: `${rowStart} / ${rowEnd}`,
                           alignSelf: 'start',
                           minHeight: blockHeight,
-                          background:
-                            availability.status === 'blocked'
-                              ? 'repeating-linear-gradient(-45deg, #3d4953, #3d4953 4px, #566471 4px, #566471 8px)'
-                              : availabilityColors[availability.status],
+                          background: availabilityColors[availability.status],
                         }}
                         onContextMenu={(event) => {
                           if (!editable) return
@@ -1371,27 +1363,13 @@ const App = () => {
                         title={`${availability.status.toUpperCase()} · ${formatTime(start)} - ${formatTime(end)}`}
                         aria-label={`${availability.status} from ${formatTime(start)} to ${formatTime(end)}`}
                       >
-                        <div
-                          className={`pointer-events-none flex h-full flex-col justify-start gap-0.5 text-[11px] font-bold ${
-                            availability.status === 'blocked' ? 'text-white' : 'text-slate-700'
-                          }`}
-                        >
+                        <div className="pointer-events-none flex h-full flex-col justify-start gap-0.5 text-[10px] font-bold text-slate-700">
                           <span>{availability.status.toUpperCase()}</span>
-                          <span
-                            className={`text-[10px] font-semibold ${
-                              availability.status === 'blocked' ? 'text-white/85' : 'text-slate-600/90'
-                            }`}
-                          >
+                          <span className="text-[10px] font-semibold text-slate-600/90">
                             {formatTime(start)} – {formatTime(end)}
                           </span>
                           {type ? (
-                            <span
-                              className={`w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                                availability.status === 'blocked'
-                                  ? 'bg-white/20 text-white'
-                                  : 'bg-white/75 text-slate-600'
-                              }`}
-                            >
+                            <span className="w-fit rounded bg-white/75 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
                               {type.name}
                             </span>
                           ) : null}
@@ -1455,7 +1433,7 @@ const App = () => {
                     )
                     const rowStart = startSlot + 2
                     const rowEnd = exclusiveEndSlot + 2
-                    const blockHeight = Math.max((exclusiveEndSlot - startSlot) * rowHeight - 8, 88)
+                    const blockHeight = Math.max((exclusiveEndSlot - startSlot) * rowHeight - 6, 52)
                     const column = gridColumns.findIndex((item) =>
                       item.kind === 'day'
                         ? isSameDay(item.date, start)
@@ -1832,6 +1810,7 @@ const App = () => {
           }}
         />
       ) : null}
+      </div>
     </div>
   )
 }
@@ -1852,9 +1831,9 @@ const FilterCard = ({
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-slate-50/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0f5f92]"
+      className="flex w-full items-center justify-between px-3 py-2.5 text-left transition hover:bg-slate-50/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0f5f92]"
     >
-      <span className="text-[14px] font-semibold text-slate-800">{title}</span>
+      <span className="text-[13px] font-semibold text-slate-800">{title}</span>
       <span className="text-[12px] text-slate-400" aria-hidden>
         {open ? '▴' : '▾'}
       </span>
@@ -1935,30 +1914,13 @@ const AvailabilityModal = ({
             className="rounded-lg border border-slate-200 px-3 py-2"
           />
         </label>
-        <label className="flex items-center gap-2 self-end rounded-lg border border-slate-200 px-3 py-2">
-          <input
-            type="checkbox"
-            checked={form.wholeDay}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                wholeDay: event.target.checked,
-                startTime: event.target.checked ? WHOLE_DAY_START : prev.startTime,
-                endTime: event.target.checked ? WHOLE_DAY_END : prev.endTime,
-              }))
-            }
-            className="size-4 accent-[#0f5f92]"
-          />
-          <span className="font-medium text-slate-700">Whole day ({WHOLE_DAY_START} – {WHOLE_DAY_END})</span>
-        </label>
         <label className="flex flex-col gap-1">
           Start Time
           <input
             type="text"
             value={form.startTime}
-            disabled={form.wholeDay}
-            onChange={(event) => setForm((prev) => ({ ...prev, startTime: event.target.value }))}
-            className="rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-400"
+            onChange={(event) => setForm((prev) => ({ ...prev, startTime: event.target.value, wholeDay: false }))}
+            className="rounded-lg border border-slate-200 px-3 py-2"
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -1966,9 +1928,8 @@ const AvailabilityModal = ({
           <input
             type="text"
             value={form.endTime}
-            disabled={form.wholeDay}
-            onChange={(event) => setForm((prev) => ({ ...prev, endTime: event.target.value }))}
-            className="rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-400"
+            onChange={(event) => setForm((prev) => ({ ...prev, endTime: event.target.value, wholeDay: false }))}
+            className="rounded-lg border border-slate-200 px-3 py-2"
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -1984,20 +1945,22 @@ const AvailabilityModal = ({
             className="rounded-lg border border-slate-200 px-3 py-2"
           >
             <option value="available">Available</option>
-            <option value="busy">Busy</option>
             <option value="blocked">Blocked</option>
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          Appointment Type (optional)
+          Appointment Type
           <select
-            value={form.appointmentTypeId ?? ''}
+            value={
+              form.appointmentTypeId ||
+              appointmentTypesForForm.find((type) => type.id !== 'busy-external')?.id ||
+              ''
+            }
             onChange={(event) =>
-              setForm((prev) => ({ ...prev, appointmentTypeId: event.target.value || undefined }))
+              setForm((prev) => ({ ...prev, appointmentTypeId: event.target.value }))
             }
             className="rounded-lg border border-slate-200 px-3 py-2"
           >
-            <option value="">None (general availability)</option>
             {appointmentTypesForForm
               .filter((type) => type.id !== 'busy-external')
               .map((type) => (

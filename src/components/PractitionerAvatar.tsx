@@ -16,7 +16,7 @@ export const PractitionerAvatar = ({ name, size = 'md' }: Props) => {
 
   const color = palette[name.length % palette.length]
   const dim =
-    size === 'sm' ? 'size-7 text-[10px]' : size === 'lg' ? 'size-11 text-[13px]' : 'size-9 text-[11px]'
+    size === 'sm' ? 'size-6 text-[9px]' : size === 'lg' ? 'size-9 text-[12px]' : 'size-8 text-[10px]'
 
   return (
     <div

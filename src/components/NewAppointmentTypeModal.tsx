@@ -2,16 +2,17 @@ import { useState } from 'react'
 import { PRACTICE_TYPE_COLORS } from '../constants'
 import type { AppointmentType } from '../types'
 
-type PatientClass = 'new' | 'existing' | 'both'
 type Modality = 'in-person' | 'telehealth' | 'phone'
 
 export type AppointmentTypeForm = {
   name: string
   baseDurationMin: number
-  patientClass: PatientClass
+  patientClass: 'new' | 'existing' | 'both'
   modalities: Modality[]
   color: string
   textColor: string
+  bufferBefore: number
+  bufferAfter: number
 }
 
 type Props = {
@@ -30,7 +31,8 @@ export const NewAppointmentTypeModal = ({ initialType = null, onCancel, onSave }
   const isEditing = !!initialType
   const [name, setName] = useState(initialType?.name ?? '')
   const [baseDurationMin, setBaseDurationMin] = useState(initialType?.baseDurationMin ?? 35)
-  const [patientClass, setPatientClass] = useState<PatientClass>(initialType?.patientClass ?? 'both')
+  const [bufferBefore, setBufferBefore] = useState(initialType?.bufferBefore ?? 0)
+  const [bufferAfter, setBufferAfter] = useState(initialType?.bufferAfter ?? 0)
   const [modalities, setModalities] = useState<Modality[]>(
     initialType?.modalities?.length ? [...initialType.modalities] : ['in-person'],
   )
@@ -81,19 +83,6 @@ export const NewAppointmentTypeModal = ({ initialType = null, onCancel, onSave }
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Eligible patient class</span>
-              <select
-                className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] outline-none transition focus:border-[#0f5f92]/50 focus:ring-2 focus:ring-[#0f5f92]/15"
-                value={patientClass}
-                onChange={(event) => setPatientClass(event.target.value as PatientClass)}
-              >
-                <option value="both">New &amp; existing</option>
-                <option value="new">New only</option>
-                <option value="existing">Existing only</option>
-              </select>
-            </label>
-
-            <label className="block">
               <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Base duration (min)</span>
               <input
                 type="number"
@@ -106,6 +95,34 @@ export const NewAppointmentTypeModal = ({ initialType = null, onCancel, onSave }
               />
               <span className="mt-1 block text-[11px] text-slate-400">5-min steps, 10 min – 4 hrs.</span>
             </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Buffer before</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  step={5}
+                  className="h-11 w-full rounded-lg border border-slate-200 px-3 text-[13px] outline-none transition focus:border-[#0f5f92]/50 focus:ring-2 focus:ring-[#0f5f92]/15"
+                  value={bufferBefore}
+                  onChange={(event) => setBufferBefore(Math.max(0, Number(event.target.value) || 0))}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Buffer after</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  step={5}
+                  className="h-11 w-full rounded-lg border border-slate-200 px-3 text-[13px] outline-none transition focus:border-[#0f5f92]/50 focus:ring-2 focus:ring-[#0f5f92]/15"
+                  value={bufferAfter}
+                  onChange={(event) => setBufferAfter(Math.max(0, Number(event.target.value) || 0))}
+                />
+              </label>
+              <span className="col-span-2 text-[11px] text-slate-400">Minutes before / after the visit.</span>
+            </div>
           </div>
 
           <div>
@@ -170,10 +187,12 @@ export const NewAppointmentTypeModal = ({ initialType = null, onCancel, onSave }
               onSave({
                 name: name.trim(),
                 baseDurationMin,
-                patientClass,
+                patientClass: initialType?.patientClass ?? 'both',
                 modalities,
                 color: selectedPalette.color,
                 textColor: selectedPalette.textColor,
+                bufferBefore,
+                bufferAfter,
               })
             }
             className="h-10 rounded-lg bg-[#3d4f5f] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-40"

@@ -103,11 +103,7 @@ const buildTimeline = (
 const tone = (kind: TimelineItem['kind']) => {
   if (kind === 'available') return { bg: availabilityColors.available, text: 'text-emerald-900' }
   if (kind === 'busy') return { bg: availabilityColors.busy, text: 'text-slate-700' }
-  if (kind === 'blocked')
-    return {
-      bg: 'repeating-linear-gradient(-45deg, #3d4953, #3d4953 3px, #566471 3px, #566471 6px)',
-      text: 'text-white',
-    }
+  if (kind === 'blocked') return { bg: availabilityColors.blocked, text: 'text-slate-700' }
   if (kind === 'appointment') return { bg: '#0f5f92', text: 'text-white' }
   return { bg: '#eef6fb', text: 'text-slate-600' }
 }

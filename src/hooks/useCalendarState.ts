@@ -729,8 +729,10 @@ export const useCalendarState = () => {
     color: string
     textColor: string
     baseDurationMin: number
-    patientClass: 'new' | 'existing' | 'both'
+    patientClass?: 'new' | 'existing' | 'both'
     modalities: Array<'in-person' | 'telehealth' | 'phone'>
+    bufferBefore?: number
+    bufferAfter?: number
   }) => {
     const trimmed = input.name.trim()
     if (!trimmed) return null
@@ -755,8 +757,10 @@ export const useCalendarState = () => {
       color: string
       textColor: string
       baseDurationMin: number
-      patientClass: 'new' | 'existing' | 'both'
+      patientClass?: 'new' | 'existing' | 'both'
       modalities: Array<'in-person' | 'telehealth' | 'phone'>
+      bufferBefore?: number
+      bufferAfter?: number
     },
   ) => {
     const trimmed = input.name.trim()
@@ -776,8 +780,10 @@ export const useCalendarState = () => {
       color: input.color,
       textColor: input.textColor,
       baseDurationMin: input.baseDurationMin,
-      patientClass: input.patientClass,
+      patientClass: input.patientClass ?? existing.patientClass ?? 'both',
       modalities: input.modalities,
+      bufferBefore: input.bufferBefore ?? 0,
+      bufferAfter: input.bufferAfter ?? 0,
     }
     setAppointmentTypeCatalog((prev) => prev.map((type) => (type.id === id ? updated : type)))
     return updated

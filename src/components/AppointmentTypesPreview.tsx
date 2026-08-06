@@ -7,13 +7,6 @@ type Props = {
   onBack: () => void
 }
 
-const patientClassLabel = (value?: AppointmentType['patientClass']) => {
-  if (value === 'new') return 'New only'
-  if (value === 'existing') return 'Existing only'
-  if (value === 'both') return 'New & existing'
-  return '—'
-}
-
 export const AppointmentTypesPreview = ({ types, onAddNew, onEdit, onBack }: Props) => {
   const practiceTypes = types.filter((type) => type.id !== 'busy-external' && type.scope === 'global')
 
@@ -49,7 +42,6 @@ export const AppointmentTypesPreview = ({ types, onAddNew, onEdit, onBack }: Pro
               <tr>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Duration</th>
-                <th className="px-4 py-3">Patient class</th>
                 <th className="px-4 py-3">Notice window</th>
                 <th className="px-4 py-3">Booking window</th>
                 <th className="px-4 py-3">Buffer</th>
@@ -68,20 +60,8 @@ export const AppointmentTypesPreview = ({ types, onAddNew, onEdit, onBack }: Pro
                   <td className="px-4 py-3.5 text-slate-600">
                     {type.baseDurationMin ? `${type.baseDurationMin} min` : '—'}
                   </td>
-                  <td className="px-4 py-3.5 text-slate-600">{patientClassLabel(type.patientClass)}</td>
-                  <td className="px-4 py-3.5">
-                    <span className="inline-flex items-center gap-2 text-slate-700">
-                      {type.noticeWindowHours != null ? `${type.noticeWindowHours}h` : '—'}
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          type.noticeWindowHours != null
-                            ? 'bg-[#e8f2f8] text-[#0f5f92]'
-                            : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        {type.noticeWindowHours != null ? 'Type override' : 'Practice default'}
-                      </span>
-                    </span>
+                  <td className="px-4 py-3.5 text-slate-600">
+                    {type.noticeWindowHours != null ? `${type.noticeWindowHours}h` : '—'}
                   </td>
                   <td className="px-4 py-3.5 text-slate-600">
                     {type.bookingWindowDays != null ? `${type.bookingWindowDays} days ahead` : '—'}
@@ -107,7 +87,7 @@ export const AppointmentTypesPreview = ({ types, onAddNew, onEdit, onBack }: Pro
               ))}
               {practiceTypes.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
                     No appointment types yet. Click New appointment type to add one.
                   </td>
                 </tr>
