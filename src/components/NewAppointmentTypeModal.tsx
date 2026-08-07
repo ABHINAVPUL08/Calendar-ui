@@ -75,28 +75,29 @@ export const NewAppointmentTypeModal = ({
   }
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-[2px]">
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(16,40,70,0.22)] ring-1 ring-slate-200/80">
-        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight text-slate-900">
-              {isEditing ? 'Edit appointment type' : 'New appointment type'}
-            </h2>
-            <p className="mt-1 text-[12px] text-slate-500">
-              Practice-default type available across the practice.
-            </p>
+    <div className="fixed inset-0 z-[90] overflow-y-auto bg-slate-900/35 backdrop-blur-[2px]">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
+        <div className="flex max-h-[min(92dvh,920px)] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(16,40,70,0.22)] ring-1 ring-slate-200/80">
+          <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-5 py-3.5">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">
+                {isEditing ? 'Edit appointment type' : 'New appointment type'}
+              </h2>
+              <p className="mt-1 text-[12px] text-slate-500">
+                Practice-default type available across the practice.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="grid size-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Close"
+            >
+              ✕
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="grid size-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
 
-        <div className="space-y-4 px-5 py-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Name</span>
             <input
@@ -277,50 +278,51 @@ export const NewAppointmentTypeModal = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4">
-          {isEditing && onDelete ? (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="h-10 rounded-lg border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-            >
-              Delete
-            </button>
-          ) : (
-            <span />
-          )}
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="h-10 rounded-lg px-4 text-sm font-medium text-slate-600 transition hover:bg-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={!canSave}
-              onClick={() => {
-                if (!userType) return
-                onSave({
-                  name: name.trim(),
-                  baseDurationMin,
-                  patientClass: initialType?.patientClass ?? 'both',
-                  modalities,
-                  color: selectedPalette.color,
-                  textColor: selectedPalette.textColor,
-                  bufferBefore,
-                  bufferAfter,
-                  noticeWindowHours,
-                  bookingWindowDays,
-                  userType,
-                  maxLimit: userType === 'multiple' ? Math.max(1, parsedMaxLimit || 1) : 1,
-                })
-              }}
-              className="h-10 rounded-lg bg-[#3d4f5f] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-40"
-            >
-              {isEditing ? 'Save changes' : 'Create type'}
-            </button>
+          <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-3.5">
+            {isEditing && onDelete ? (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="h-10 rounded-lg border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+              >
+                Delete
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="h-10 rounded-lg px-4 text-sm font-medium text-slate-600 transition hover:bg-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!canSave}
+                onClick={() => {
+                  if (!userType) return
+                  onSave({
+                    name: name.trim(),
+                    baseDurationMin,
+                    patientClass: initialType?.patientClass ?? 'both',
+                    modalities,
+                    color: selectedPalette.color,
+                    textColor: selectedPalette.textColor,
+                    bufferBefore,
+                    bufferAfter,
+                    noticeWindowHours,
+                    bookingWindowDays,
+                    userType,
+                    maxLimit: userType === 'multiple' ? Math.max(1, parsedMaxLimit || 1) : 1,
+                  })
+                }}
+                className="h-10 rounded-lg bg-[#3d4f5f] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-40"
+              >
+                {isEditing ? 'Save changes' : 'Create type'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
