@@ -125,11 +125,13 @@ export const buildGlobalAppointmentType = (input: {
 
 export const canAccessAppointmentType = (type: AppointmentType, viewer: Practitioner = currentUser): boolean => {
   if (type.scope === 'global') return true
-  if (viewer.role === 'Admin') return true
+  // Private types stay with the individual doctor who owns them.
   return type.ownerPractitionerId === viewer.id
 }
 
-/** Types a practitioner can assign when booking: globals + their own private types. */
+/** Types available when booking for a practitioner.
+ * Globals for everyone; private types only when the viewer is that owning doctor (not Admin/others).
+ */
 export const appointmentTypesForPractitioner = (
   types: AppointmentType[],
   practitionerId: string,
@@ -138,11 +140,9 @@ export const appointmentTypesForPractitioner = (
   types.filter((type) => {
     if (type.id === 'busy-external') return false
     if (type.scope === 'global') return true
-    if (!type.ownerPractitionerId) return false
-    // Owner always sees their private types; Admin can assign any private type for that doctor
-    if (type.ownerPractitionerId === practitionerId) return true
-    if (viewer.role === 'Admin' && type.ownerPractitionerId === practitionerId) return true
-    return false
+    if (type.ownerPractitionerId !== practitionerId) return false
+    // Private types stay with the individual doctor — Admin and other doctors never see them.
+    return viewer.id === type.ownerPractitionerId
   })
 
 export const accessibleAppointmentTypes = (
@@ -155,15 +155,38 @@ const privateTypeColors = ['#006b67', '#8b4d6b', '#2f6f4e', '#6b4f2a', '#3d5a80'
 export const buildPrivateAppointmentType = (
   name: string,
   ownerPractitionerId: string,
+  extras?: {
+    color?: string
+    textColor?: string
+    baseDurationMin?: number
+    patientClass?: 'new' | 'existing' | 'both'
+    modalities?: Array<'in-person' | 'telehealth' | 'phone'>
+    bufferBefore?: number
+    bufferAfter?: number
+    noticeWindowHours?: number
+    bookingWindowDays?: number
+    userType?: 'single' | 'multiple'
+    maxLimit?: number
+  },
 ): AppointmentType => {
-  const color = privateTypeColors[name.length % privateTypeColors.length]
+  const color = extras?.color ?? privateTypeColors[name.length % privateTypeColors.length]
+  const userType = extras?.userType ?? 'single'
   return {
     id: `private-${ownerPractitionerId}-${crypto.randomUUID().slice(0, 8)}`,
     name: name.trim(),
     color,
-    textColor: '#ffffff',
+    textColor: extras?.textColor ?? '#ffffff',
     scope: 'private',
     ownerPractitionerId,
+    baseDurationMin: extras?.baseDurationMin ?? 35,
+    patientClass: extras?.patientClass ?? 'both',
+    modalities: extras?.modalities?.length ? extras.modalities : ['in-person'],
+    noticeWindowHours: extras?.noticeWindowHours ?? 24,
+    bookingWindowDays: extras?.bookingWindowDays ?? 60,
+    bufferBefore: extras?.bufferBefore ?? 0,
+    bufferAfter: extras?.bufferAfter ?? 0,
+    userType,
+    maxLimit: userType === 'multiple' ? Math.max(1, extras?.maxLimit ?? 1) : 1,
   }
 }
 

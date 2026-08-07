@@ -7,7 +7,7 @@ import {
   WHOLE_DAY_START,
 } from '../constants'
 import { formatTime, parseDateInput, setTimeForDate, toDateInputValue } from '../date-utils'
-import type { AppointmentType, AvailabilityFormState, AvailabilityStatus } from '../types'
+import type { AppointmentType, AvailabilityFormState, AvailabilityStatus, Practitioner } from '../types'
 import { TimePickerField } from './TimePickerField'
 import { NewAppointmentTypeModal, type AppointmentTypeForm } from './NewAppointmentTypeModal'
 
@@ -50,12 +50,15 @@ type Props = {
   appointmentTypes: AppointmentType[]
   appointmentDefaults: CreateAppointmentForm
   availabilityDefaults: CreateAvailabilityForm
+  /** Active viewer — private types only show when this person owns them. */
+  viewer: Practitioner
   /** When true, practitioner is fixed to the clicked/selected person and cannot be changed. */
   lockPractitioner?: boolean
   onCancel: () => void
   onCreateAppointment: (form: CreateAppointmentForm) => void
   onCreateAvailability: (form: CreateAvailabilityForm) => void
-  onCreateGlobalAppointmentType: (form: AppointmentTypeForm) => AppointmentType | null
+  /** Creates a type — Admin: practice-wide; others: private to the logged-in doctor. */
+  onCreateAppointmentType: (form: AppointmentTypeForm) => AppointmentType | null
 }
 
 type Step = 'form' | 'preview'
@@ -132,11 +135,12 @@ export const CreateEventPanel = ({
   appointmentTypes,
   appointmentDefaults,
   availabilityDefaults,
+  viewer,
   lockPractitioner = false,
   onCancel,
   onCreateAppointment,
   onCreateAvailability,
-  onCreateGlobalAppointmentType,
+  onCreateAppointmentType,
 }: Props) => {
   const [kind, setKind] = useState<CreateEventKind>(initialKind)
   const [step, setStep] = useState<Step>('form')
@@ -165,13 +169,13 @@ export const CreateEventPanel = ({
   const [selectedDraftId, setSelectedDraftId] = useState<1 | 2 | 3>(1)
 
   const bookableTypes = useMemo(
-    () => appointmentTypesForPractitioner(appointmentTypes, appointment.practitionerId),
-    [appointmentTypes, appointment.practitionerId],
+    () => appointmentTypesForPractitioner(appointmentTypes, appointment.practitionerId, viewer),
+    [appointmentTypes, appointment.practitionerId, viewer],
   )
 
   const availabilityTypes = useMemo(
-    () => appointmentTypesForPractitioner(appointmentTypes, availability.practitionerId),
-    [appointmentTypes, availability.practitionerId],
+    () => appointmentTypesForPractitioner(appointmentTypes, availability.practitionerId, viewer),
+    [appointmentTypes, availability.practitionerId, viewer],
   )
 
   const globalBookable = bookableTypes.filter((type) => type.scope === 'global')
@@ -297,12 +301,18 @@ export const CreateEventPanel = ({
   }
 
   const handleCreatedAppointmentType = (form: AppointmentTypeForm) => {
-    const created = onCreateGlobalAppointmentType(form)
+    const created = onCreateAppointmentType(form)
     if (!created) return
     setShowNewTypeModal(false)
     if (kind === 'appointment') {
+      // Private types only apply when booking for the owning doctor — switch to them if needed.
+      const nextPractitionerId =
+        created.scope === 'private' && created.ownerPractitionerId
+          ? created.ownerPractitionerId
+          : appointment.practitionerId
       setAppointment((prev) => ({
         ...prev,
+        practitionerId: nextPractitionerId,
         appointmentTypeId: created.id,
         appointmentName: created.name,
         endTime: addMinutesToTimeLabel(prev.startTime, typeDuration(created)),
@@ -311,8 +321,13 @@ export const CreateEventPanel = ({
       setAssignedFormIds([])
       return
     }
+    const nextPractitionerId =
+      created.scope === 'private' && created.ownerPractitionerId
+        ? created.ownerPractitionerId
+        : availability.practitionerId
     setAvailability((prev) => ({
       ...prev,
+      practitionerId: nextPractitionerId,
       appointmentTypeIds: prev.appointmentTypeIds.includes(created.id)
         ? prev.appointmentTypeIds
         : [...prev.appointmentTypeIds, created.id],
@@ -629,6 +644,7 @@ export const CreateEventPanel = ({
                         const nextTypes = appointmentTypesForPractitioner(
                           appointmentTypes,
                           practitionerId,
+                          viewer,
                         )
                         const stillValid = nextTypes.some(
                           (type) => type.id === appointment.appointmentTypeId,
@@ -775,37 +791,41 @@ export const CreateEventPanel = ({
                       </label>
                     ))}
 
-                    <div className="flex items-center gap-1.5 border-y border-[#eef2f6] bg-[#faf8fd] px-3 py-1.5">
-                      <span className="text-[10px] font-bold tracking-wide text-[#7b5aa6] uppercase">
-                        Private Types
-                      </span>
-                      <span className="text-[10px] text-[#a08cc0]">
-                        visible to you, Staff and Admin only
-                      </span>
-                    </div>
+                    {privateBookable.length > 0 ? (
+                      <>
+                        <div className="flex items-center gap-1.5 border-y border-[#eef2f6] bg-[#faf8fd] px-3 py-1.5">
+                          <span className="text-[10px] font-bold tracking-wide text-[#7b5aa6] uppercase">
+                            Private Types
+                          </span>
+                          <span className="text-[10px] text-[#a08cc0]">
+                            owner only — hidden from Admin & others
+                          </span>
+                        </div>
 
-                    {privateBookable.map((type) => (
-                      <label
-                        key={type.id}
-                        className={typeRowClass(appointment.appointmentTypeId === type.id, true)}
-                      >
-                        <input
-                          type="radio"
-                          name="appointmentType"
-                          checked={appointment.appointmentTypeId === type.id}
-                          onChange={() => pickAppointmentType(type.id)}
-                          className="size-3.5 accent-[#7b5aa6]"
-                        />
-                        <span
-                          className="size-2.5 shrink-0 rounded-[3px]"
-                          style={{ background: type.color }}
-                        />
-                        <span className="flex-1 text-[12.5px] text-[#1c2b3a]">{type.name}</span>
-                        <span className="font-mono text-[11px] text-[#93a2b1]">
-                          {typeDuration(type)} min
-                        </span>
-                      </label>
-                    ))}
+                        {privateBookable.map((type) => (
+                          <label
+                            key={type.id}
+                            className={typeRowClass(appointment.appointmentTypeId === type.id, true)}
+                          >
+                            <input
+                              type="radio"
+                              name="appointmentType"
+                              checked={appointment.appointmentTypeId === type.id}
+                              onChange={() => pickAppointmentType(type.id)}
+                              className="size-3.5 accent-[#7b5aa6]"
+                            />
+                            <span
+                              className="size-2.5 shrink-0 rounded-[3px]"
+                              style={{ background: type.color }}
+                            />
+                            <span className="flex-1 text-[12.5px] text-[#1c2b3a]">{type.name}</span>
+                            <span className="font-mono text-[11px] text-[#93a2b1]">
+                              {typeDuration(type)} min
+                            </span>
+                          </label>
+                        ))}
+                      </>
+                    ) : null}
 
                     <button
                       type="button"
@@ -970,6 +990,7 @@ export const CreateEventPanel = ({
                         const nextTypes = appointmentTypesForPractitioner(
                           appointmentTypes,
                           practitionerId,
+                          viewer,
                         )
                         const allowed = new Set(nextTypes.map((type) => type.id))
                         setAvailability({
@@ -1099,39 +1120,43 @@ export const CreateEventPanel = ({
                       </label>
                     ))}
 
-                    <div className="flex items-center gap-1.5 border-y border-[#eef2f6] bg-[#faf8fd] px-3 py-1.5">
-                      <span className="text-[10px] font-bold tracking-wide text-[#7b5aa6] uppercase">
-                        Private Types
-                      </span>
-                      <span className="text-[10px] text-[#a08cc0]">
-                        visible to you, Staff and Admin only
-                      </span>
-                    </div>
+                    {privateAvail.length > 0 ? (
+                      <>
+                        <div className="flex items-center gap-1.5 border-y border-[#eef2f6] bg-[#faf8fd] px-3 py-1.5">
+                          <span className="text-[10px] font-bold tracking-wide text-[#7b5aa6] uppercase">
+                            Private Types
+                          </span>
+                          <span className="text-[10px] text-[#a08cc0]">
+                            owner only — hidden from Admin & others
+                          </span>
+                        </div>
 
-                    {privateAvail.map((type) => (
-                      <label
-                        key={type.id}
-                        className={typeRowClass(
-                          availability.appointmentTypeIds.includes(type.id),
-                          true,
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={availability.appointmentTypeIds.includes(type.id)}
-                          onChange={() => toggleAvailabilityType(type.id)}
-                          className="size-3.5 accent-[#7b5aa6]"
-                        />
-                        <span
-                          className="size-2.5 shrink-0 rounded-[3px]"
-                          style={{ background: type.color }}
-                        />
-                        <span className="flex-1 text-[12.5px] text-[#1c2b3a]">{type.name}</span>
-                        <span className="font-mono text-[11px] text-[#93a2b1]">
-                          {typeDuration(type)} min
-                        </span>
-                      </label>
-                    ))}
+                        {privateAvail.map((type) => (
+                          <label
+                            key={type.id}
+                            className={typeRowClass(
+                              availability.appointmentTypeIds.includes(type.id),
+                              true,
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={availability.appointmentTypeIds.includes(type.id)}
+                              onChange={() => toggleAvailabilityType(type.id)}
+                              className="size-3.5 accent-[#7b5aa6]"
+                            />
+                            <span
+                              className="size-2.5 shrink-0 rounded-[3px]"
+                              style={{ background: type.color }}
+                            />
+                            <span className="flex-1 text-[12.5px] text-[#1c2b3a]">{type.name}</span>
+                            <span className="font-mono text-[11px] text-[#93a2b1]">
+                              {typeDuration(type)} min
+                            </span>
+                          </label>
+                        ))}
+                      </>
+                    ) : null}
 
                     <label className={typeRowClass(availability.includeBlocked)}>
                       <input
@@ -1191,6 +1216,7 @@ export const CreateEventPanel = ({
       </div>
       {showNewTypeModal ? (
         <NewAppointmentTypeModal
+          scopeHint={viewer.role === 'Admin' ? 'global' : 'private'}
           onCancel={() => setShowNewTypeModal(false)}
           onSave={handleCreatedAppointmentType}
         />
