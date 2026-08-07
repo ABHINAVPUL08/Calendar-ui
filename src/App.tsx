@@ -657,9 +657,10 @@ const App = () => {
                 <button
                   key={persona.id}
                   type="button"
-                  onClick={() => {
+                    onClick={() => {
                     setViewerId(persona.id)
-                    if (persona.id !== 'p5') {
+                    // Close practice-type manager when leaving Admin; practitioners manage private types separately.
+                    if (persona.id === 'p2') {
                       setShowAppointmentTypesPreview(false)
                       setShowNewAppointmentTypeModal(false)
                       setEditingAppointmentTypeId(null)
@@ -906,7 +907,7 @@ const App = () => {
                 </label>
               ))}
             <p className="mb-1 mt-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              Private (you & admin)
+              Private (you only)
             </p>
             {visibleTypes
               .filter((item) => item.scope === 'private')
@@ -981,12 +982,26 @@ const App = () => {
 
         {showAppointmentTypesPreview && canConfigureAppointmentTypes ? (
           <AppointmentTypesPreview
-            types={appointmentTypeCatalog}
+            types={
+              viewer.role === 'Practitioner'
+                ? appointmentTypeCatalog.filter(
+                    (type) =>
+                      type.id !== 'busy-external' &&
+                      (type.scope === 'global' ||
+                        (type.scope === 'private' && type.ownerPractitionerId === viewer.id)),
+                  )
+                : appointmentTypeCatalog.filter(
+                    (type) => type.id !== 'busy-external' && type.scope === 'global',
+                  )
+            }
+            mode={viewer.role === 'Practitioner' ? 'practitioner' : 'admin'}
             onAddNew={() => {
               setEditingAppointmentTypeId(null)
               setShowNewAppointmentTypeModal(true)
             }}
             onEdit={(type) => {
+              // Practitioners can only edit their own private types
+              if (viewer.role === 'Practitioner' && type.scope !== 'private') return
               setEditingAppointmentTypeId(type.id)
               setShowNewAppointmentTypeModal(true)
             }}
@@ -1674,6 +1689,7 @@ const App = () => {
           key={`create-${createEventKind}-${activePractitionerForDraft ?? 'any'}-${appointmentTimeDraft?.startTime ?? availabilityDraft?.startTime ?? 'default'}-${appointmentTimeDraft?.endTime ?? availabilityDraft?.endTime ?? 'default'}-${toDateInputValue(appointmentTimeDraft?.date ?? selectedDate)}-${appointmentTimeDraft?.endDate ? toDateInputValue(appointmentTimeDraft.endDate) : 'same'}`}
           initialKind={createEventKind}
           appointmentTypes={appointmentTypeCatalog}
+          viewer={viewer}
           lockPractitioner={lockCreatePractitioner}
           appointmentDefaults={defaultAppointmentForm({
             date: appointmentTimeDraft?.date ?? selectedDate,
@@ -1718,7 +1734,13 @@ const App = () => {
                 })
           }
           onCancel={closeCreatePanel}
-          onCreateGlobalAppointmentType={createGlobalAppointmentType}
+          onCreateAppointmentType={(form) => {
+            // Admin: practice-wide only. Doctors: private to themselves (never visible to Admin).
+            if (viewer.role === 'Admin') {
+              return createGlobalAppointmentType(form)
+            }
+            return createAppointmentType(viewer.id, form)
+          }}
           onCreateAppointment={(form) => {
             const location =
               form.meetingType === 'virtual' ? 'Virtual' : form.location || 'North Clinic'
@@ -1828,6 +1850,12 @@ const App = () => {
         <NewAppointmentTypeModal
           key={editingAppointmentTypeId ?? 'new-type'}
           initialType={editingAppointmentType}
+          scopeHint={
+            editingAppointmentType?.scope === 'private' ||
+            (!editingAppointmentTypeId && viewer.role === 'Practitioner')
+              ? 'private'
+              : 'global'
+          }
           onCancel={() => {
             setShowNewAppointmentTypeModal(false)
             setEditingAppointmentTypeId(null)
@@ -1835,6 +1863,8 @@ const App = () => {
           onSave={(form) => {
             if (editingAppointmentTypeId) {
               updateGlobalAppointmentType(editingAppointmentTypeId, form)
+            } else if (viewer.role === 'Practitioner') {
+              createAppointmentType(viewer.id, form)
             } else {
               createGlobalAppointmentType(form)
             }

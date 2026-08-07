@@ -17,7 +17,7 @@ export type AppointmentType = {
   color: string
   textColor: string
   scope: 'global' | 'private'
-  /** Private types are visible only to the owning practitioner and Admin staff. */
+  /** Private types are visible only to the owning practitioner — not Admin or other doctors. */
   ownerPractitionerId?: string
   /** Admin practice-default metadata */
   baseDurationMin?: number

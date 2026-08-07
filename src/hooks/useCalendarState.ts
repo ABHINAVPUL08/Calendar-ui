@@ -143,7 +143,7 @@ const createInitialEvents = (): CalendarEvent[] => [
     appointmentTypeId: 'therapy-intake-private',
     start: new Date(2026, 6, 28, 16, 30).toISOString(),
     end: new Date(2026, 6, 28, 17, 0).toISOString(),
-    notes: 'Private therapy intake — visible to owner and Admin only.',
+    notes: 'Private therapy intake — visible only to the owning practitioner.',
     location: 'West Clinic',
   },
   {
@@ -345,9 +345,16 @@ export const useCalendarState = () => {
     const eventTypeSet = new Set(filters.eventTypeIds)
     return events.filter((event) => {
       if (!filters.practitionerIds.includes(event.practitionerId)) return false
-      if (!eventTypeSet.has(event.appointmentTypeId)) return false
       const appointmentType = appointmentTypeCatalog.find((item) => item.id === event.appointmentTypeId)
-      if (!appointmentType || !canAccessAppointmentType(appointmentType, viewer)) return false
+      if (!appointmentType) return false
+      // Private types stay out of other people's type filters, but booked slots still show on the shared grid.
+      if (appointmentType.scope === 'private') {
+        if (canAccessAppointmentType(appointmentType, viewer) && !eventTypeSet.has(event.appointmentTypeId)) {
+          return false
+        }
+      } else if (!eventTypeSet.has(event.appointmentTypeId)) {
+        return false
+      }
       const practitioner = practitioners.find((p) => p.id === event.practitionerId)
       if (!practitioner) return false
       return filters.roles.includes(practitioner.role) && filters.locations.includes(practitioner.location)
@@ -359,9 +366,18 @@ export const useCalendarState = () => {
     return availabilityBlocks.filter((item) => {
       if (!filters.practitionerIds.includes(item.practitionerId)) return false
       if (item.appointmentTypeId) {
-        if (!eventTypeSet.has(item.appointmentTypeId)) return false
         const appointmentType = appointmentTypeCatalog.find((type) => type.id === item.appointmentTypeId)
-        if (appointmentType && !canAccessAppointmentType(appointmentType, viewer)) return false
+        if (!appointmentType) return false
+        if (appointmentType.scope === 'private') {
+          if (
+            canAccessAppointmentType(appointmentType, viewer) &&
+            !eventTypeSet.has(item.appointmentTypeId)
+          ) {
+            return false
+          }
+        } else if (!eventTypeSet.has(item.appointmentTypeId)) {
+          return false
+        }
       }
       return true
     })
@@ -705,16 +721,33 @@ export const useCalendarState = () => {
     }
   }
 
-  const createAppointmentType = (name: string, ownerPractitionerId: string) => {
-    const trimmed = name.trim()
+  const createAppointmentType = (
+    ownerPractitionerId: string,
+    input: {
+      name: string
+      color: string
+      textColor: string
+      baseDurationMin: number
+      patientClass?: 'new' | 'existing' | 'both'
+      modalities: Array<'in-person' | 'telehealth' | 'phone'>
+      bufferBefore?: number
+      bufferAfter?: number
+      noticeWindowHours?: number
+      bookingWindowDays?: number
+      userType?: 'single' | 'multiple'
+      maxLimit?: number
+    },
+  ) => {
+    const trimmed = input.name.trim()
     if (!trimmed || !ownerPractitionerId) return null
     const existing = appointmentTypeCatalog.find(
       (type) =>
+        type.scope === 'private' &&
         type.ownerPractitionerId === ownerPractitionerId &&
         type.name.toLowerCase() === trimmed.toLowerCase(),
     )
     if (existing) return existing
-    const created = buildPrivateAppointmentType(trimmed, ownerPractitionerId)
+    const created = buildPrivateAppointmentType(trimmed, ownerPractitionerId, input)
     setAppointmentTypeCatalog((prev) => [...prev, created])
     setFilters((prev) =>
       prev.eventTypeIds.includes(created.id)
@@ -754,7 +787,7 @@ export const useCalendarState = () => {
     return created
   }
 
-  const updateGlobalAppointmentType = (
+  const updateAppointmentType = (
     id: string,
     input: {
       name: string
@@ -774,13 +807,20 @@ export const useCalendarState = () => {
     const trimmed = input.name.trim()
     if (!trimmed) return null
     const existing = appointmentTypeCatalog.find((type) => type.id === id)
-    if (!existing || existing.scope !== 'global') return null
-    const nameTaken = appointmentTypeCatalog.some(
-      (type) =>
-        type.id !== id &&
-        type.scope === 'global' &&
-        type.name.toLowerCase() === trimmed.toLowerCase(),
-    )
+    if (!existing || existing.id === 'busy-external') return null
+    if (existing.scope === 'private') {
+      if (existing.ownerPractitionerId !== viewer.id) return null
+    } else if (viewer.role !== 'Admin') {
+      return null
+    }
+    const nameTaken = appointmentTypeCatalog.some((type) => {
+      if (type.id === id) return false
+      if (type.name.toLowerCase() !== trimmed.toLowerCase()) return false
+      if (existing.scope === 'global') return type.scope === 'global'
+      return (
+        type.scope === 'private' && type.ownerPractitionerId === existing.ownerPractitionerId
+      )
+    })
     if (nameTaken) return null
     const userType = input.userType ?? existing.userType ?? 'single'
     const updated = {
@@ -802,10 +842,32 @@ export const useCalendarState = () => {
     return updated
   }
 
-  const deleteGlobalAppointmentType = (id: string) => {
+  const updateGlobalAppointmentType = (
+    id: string,
+    input: {
+      name: string
+      color: string
+      textColor: string
+      baseDurationMin: number
+      patientClass?: 'new' | 'existing' | 'both'
+      modalities: Array<'in-person' | 'telehealth' | 'phone'>
+      bufferBefore?: number
+      bufferAfter?: number
+      noticeWindowHours?: number
+      bookingWindowDays?: number
+      userType?: 'single' | 'multiple'
+      maxLimit?: number
+    },
+  ) => updateAppointmentType(id, input)
+
+  const deleteAppointmentType = (id: string) => {
     const existing = appointmentTypeCatalog.find((type) => type.id === id)
-    if (!existing || existing.scope !== 'global') return false
-    if (existing.id === 'busy-external') return false
+    if (!existing || existing.id === 'busy-external') return false
+    if (existing.scope === 'private') {
+      if (existing.ownerPractitionerId !== viewer.id) return false
+    } else if (viewer.role !== 'Admin') {
+      return false
+    }
     setAppointmentTypeCatalog((prev) => prev.filter((type) => type.id !== id))
     setFilters((prev) => ({
       ...prev,
@@ -813,6 +875,8 @@ export const useCalendarState = () => {
     }))
     return true
   }
+
+  const deleteGlobalAppointmentType = (id: string) => deleteAppointmentType(id)
 
   const goToToday = () => {
     setSelectedDate(new Date())

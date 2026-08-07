@@ -21,6 +21,8 @@ export type AppointmentTypeForm = {
 
 type Props = {
   initialType?: AppointmentType | null
+  /** Controls helper copy — practitioners create private types. */
+  scopeHint?: 'global' | 'private'
   onCancel: () => void
   onSave: (form: AppointmentTypeForm) => void
   onDelete?: () => void
@@ -34,11 +36,13 @@ const modalityOptions: { id: Modality; label: string }[] = [
 
 export const NewAppointmentTypeModal = ({
   initialType = null,
+  scopeHint = 'global',
   onCancel,
   onSave,
   onDelete,
 }: Props) => {
   const isEditing = !!initialType
+  const effectiveScope = initialType?.scope ?? scopeHint
   const [name, setName] = useState(initialType?.name ?? '')
   const [baseDurationMin, setBaseDurationMin] = useState(initialType?.baseDurationMin ?? 35)
   const [bufferBefore, setBufferBefore] = useState(initialType?.bufferBefore ?? 0)
@@ -84,7 +88,9 @@ export const NewAppointmentTypeModal = ({
                 {isEditing ? 'Edit appointment type' : 'New appointment type'}
               </h2>
               <p className="mt-1 text-[12px] text-slate-500">
-                Practice-default type available across the practice.
+                {effectiveScope === 'private'
+                  ? 'Private type — only available for this practitioner. Admin and other doctors will not see it in their type lists.'
+                  : 'Practice-default type available across the practice.'}
               </p>
             </div>
             <button
