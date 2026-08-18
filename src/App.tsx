@@ -32,7 +32,13 @@ import { Modal } from './components/Modal'
 import { PractitionerAvatar } from './components/PractitionerAvatar'
 import { PractitionerDaySchedule } from './components/PractitionerDaySchedule'
 import { useCalendarState } from './hooks/useCalendarState'
-import type { AppointmentType, AvailabilityFormState, CalendarEvent } from './types'
+import type {
+  AppointmentType,
+  AvailabilityFormState,
+  CalendarEvent,
+  Practitioner,
+  StaffAccessGrant,
+} from './types'
 
 const rowHeight = 36
 const timeColumnWidth = 64
@@ -41,6 +47,19 @@ const headerRowHeight = 56
 type DragAction =
   | { kind: 'availability'; type: 'move' | 'resize-start' | 'resize-end'; id: string; startY: number }
   | { kind: 'event'; type: 'move' | 'resize-start' | 'resize-end'; id: string; startY: number }
+
+type StaffPermissionKey =
+  | 'canCreateEvent'
+  | 'canEditEvent'
+  | 'canCreateAvailability'
+  | 'canEditAvailability'
+
+const fullAccess: Record<StaffPermissionKey, boolean> = {
+  canCreateEvent: true,
+  canEditEvent: true,
+  canCreateAvailability: true,
+  canEditAvailability: true,
+}
 
 const App = () => {
   const {
@@ -87,14 +106,53 @@ const App = () => {
     setViewerId,
   } = useCalendarState()
 
+  const [staffAccessByPractitioner, setStaffAccessByPractitioner] = useState<
+    Record<string, StaffAccessGrant[]>
+  >(() => {
+    const seeded: Record<string, StaffAccessGrant[]> = {}
+    practitioners.forEach((practitioner) => {
+      const grants =
+        practitioner.staffAccess ??
+        (practitioner.staffIds ?? []).map((staffId) => ({ staffId, ...fullAccess }))
+      seeded[practitioner.id] = grants
+    })
+    return seeded
+  })
+  const [managingAccessPractitionerId, setManagingAccessPractitionerId] = useState<string | null>(null)
+  const [staffAccessDraft, setStaffAccessDraft] = useState<StaffAccessGrant[]>([])
+
+  const getGrantForStaff = useCallback(
+    (practitionerId: string, staffId: string): StaffAccessGrant | null =>
+      staffAccessByPractitioner[practitionerId]?.find((item) => item.staffId === staffId) ?? null,
+    [staffAccessByPractitioner],
+  )
+
+  const hasPermissionForPractitioner = useCallback(
+    (practitionerId: string, permission: StaffPermissionKey): boolean => {
+      if (viewer.role === 'Admin') return true
+      if (viewer.role === 'Practitioner') return viewer.id === practitionerId
+      const grant = getGrantForStaff(practitionerId, viewer.id)
+      return !!grant?.[permission]
+    },
+    [viewer.role, viewer.id, getGrantForStaff],
+  )
+
   const manageablePractitioners = useMemo(
     () =>
-      practitioners.filter(
-        (practitioner) =>
-          practitioner.role === 'Practitioner' &&
-          (practitioner.staffIds ?? []).includes(viewer.id),
-      ),
-    [viewer.id],
+      practitioners.filter((practitioner) => {
+        if (practitioner.role === 'Staff') return false
+        if (viewer.role === 'Admin') return practitioner.role === 'Practitioner' || !!practitioner.assignedStaffId
+        if (viewer.role === 'Practitioner') return practitioner.id === viewer.id
+        const grant = getGrantForStaff(practitioner.id, viewer.id)
+        if (!grant) return false
+        return (
+          grant.canCreateEvent ||
+          grant.canEditEvent ||
+          grant.canCreateAvailability ||
+          grant.canEditAvailability
+        )
+      }),
+    [viewer.role, viewer.id, getGrantForStaff],
   )
 
   const [now, setNow] = useState(() => new Date())
@@ -181,6 +239,12 @@ const App = () => {
   }
 
   const beginSlotDrag = (practitionerId: string, slotIndex: number, dateKey: string) => {
+    const requiredPermission =
+      calendarMode === 'availability' ? 'canCreateAvailability' : 'canCreateEvent'
+    if (!hasPermissionForPractitioner(practitionerId, requiredPermission)) {
+      setActionToast("You don't have permission for this practitioner.")
+      return
+    }
     updateDragSelection({
       practitionerId,
       startSlot: slotIndex,
@@ -396,13 +460,12 @@ const App = () => {
         : scopedEvents
       : []
 
-  // Availability stays on the Availability board, and also appears as booked slots in Events.
+  // Availability blocks remain native to each mode without mirroring events into Availability.
   const renderedAvailability =
     calendarMode === 'availability'
-      ? [
-          ...(viewMode === 'week' ? weekScopedAvailability : scopedAvailability),
-          ...mirroredAvailabilityFromEvents,
-        ]
+      ? viewMode === 'week'
+        ? weekScopedAvailability
+        : scopedAvailability
       : calendarMode === 'events'
         ? viewMode === 'week'
           ? weekScopedAvailability
@@ -481,16 +544,31 @@ const App = () => {
       ? [
           {
             label: 'Edit availability',
-            onClick: () => setAvailabilityEditingId(contextMenu.availabilityId!),
+            onClick: () => {
+              const target = allAvailabilityBlocks.find((item) => item.id === contextMenu.availabilityId)
+              if (!target) return
+              if (!hasPermissionForPractitioner(target.practitionerId, 'canEditAvailability')) {
+                setActionToast("You don't have permission for this practitioner.")
+                return
+              }
+              setAvailabilityEditingId(contextMenu.availabilityId!)
+            },
           },
           {
             label: 'Delete availability',
-            onClick: () =>
+            onClick: () => {
+              const target = allAvailabilityBlocks.find((item) => item.id === contextMenu.availabilityId)
+              if (!target) return
+              if (!hasPermissionForPractitioner(target.practitionerId, 'canEditAvailability')) {
+                setActionToast("You don't have permission for this practitioner.")
+                return
+              }
               setPendingDelete({
                 type: 'availability',
                 id: contextMenu.availabilityId!,
                 label: 'this availability block',
-              }),
+              })
+            },
             destructive: true,
           },
         ]
@@ -499,6 +577,10 @@ const App = () => {
             {
               label: 'Create availability',
               onClick: () => {
+                if (!hasPermissionForPractitioner(contextMenu.practitionerId, 'canCreateAvailability')) {
+                  setActionToast("You don't have permission for this practitioner.")
+                  return
+                }
                 const onDate = contextMenu.dateKey
                   ? parseDateInput(contextMenu.dateKey)
                   : selectedDate
@@ -521,6 +603,11 @@ const App = () => {
     const practitionerId =
       activePractitionerForDraft ?? selectedAvailability?.practitionerId ?? visiblePractitioners[0]?.id
     if (!practitionerId) return
+    const requiredPermission = editingId ? 'canEditAvailability' : 'canCreateAvailability'
+    if (!hasPermissionForPractitioner(practitionerId, requiredPermission)) {
+      setActionToast("You don't have permission for this practitioner.")
+      return
+    }
     void upsertAvailabilityFromForm(form, practitionerId, editingId)
   }
 
@@ -544,6 +631,71 @@ const App = () => {
       ...prev,
       practitionerIds: allTeamSelected ? [] : practitioners.map((member) => member.id),
     }))
+  }
+
+  const staffMembers = useMemo(
+    () => practitioners.filter((member) => member.role === 'Staff'),
+    [],
+  )
+  const practitionersForAccess = useMemo(
+    () => practitioners.filter((member) => !!member.assignedStaffId),
+    [],
+  )
+  const managingAccessPractitioner = useMemo(
+    () =>
+      managingAccessPractitionerId
+        ? practitioners.find((item) => item.id === managingAccessPractitionerId) ?? null
+        : null,
+    [managingAccessPractitionerId],
+  )
+  const assignedStaffForManager = useMemo(() => {
+    const staffId = managingAccessPractitioner?.assignedStaffId
+    if (!staffId) return null
+    return staffMembers.find((staff) => staff.id === staffId) ?? null
+  }, [managingAccessPractitioner, staffMembers])
+
+  const openStaffAccessManager = (practitioner: Practitioner) => {
+    const current = staffAccessByPractitioner[practitioner.id] ?? []
+    setStaffAccessDraft(current.map((item) => ({ ...item })))
+    setManagingAccessPractitionerId(practitioner.id)
+  }
+
+  const closeStaffAccessManager = () => {
+    setManagingAccessPractitionerId(null)
+    setStaffAccessDraft([])
+  }
+
+  useEffect(() => {
+    if (viewer.role !== 'Practitioner') {
+      setManagingAccessPractitionerId(null)
+      setStaffAccessDraft([])
+    }
+  }, [viewer.role])
+
+  const toggleStaffMemberInDraft = (staffId: string) => {
+    setStaffAccessDraft((prev) => {
+      const existing = prev.find((item) => item.staffId === staffId)
+      if (existing) {
+        return prev.filter((item) => item.staffId !== staffId)
+      }
+      return [...prev, { staffId, ...fullAccess }]
+    })
+  }
+
+  const updateDraftPermission = (staffId: string, permission: StaffPermissionKey, checked: boolean) => {
+    setStaffAccessDraft((prev) =>
+      prev.map((item) => (item.staffId === staffId ? { ...item, [permission]: checked } : item)),
+    )
+  }
+
+  const saveStaffAccess = () => {
+    if (!managingAccessPractitionerId) return
+    setStaffAccessByPractitioner((prev) => ({
+      ...prev,
+      [managingAccessPractitionerId]: staffAccessDraft,
+    }))
+    closeStaffAccessManager()
+    setActionToast('Staff access updated')
   }
 
   const currentTimeTop = (() => {
@@ -740,10 +892,11 @@ const App = () => {
               [
                 { id: 'p5', label: 'Admin' },
                 { id: 'p1', label: 'Practitioner' },
-                { id: 'p2', label: 'Staff' },
+                { id: 's1', label: 'Staff' },
               ] as const
             ).map((persona) => {
-              const active = viewer.id === persona.id
+              const active =
+                persona.label === 'Staff' ? viewer.role === 'Staff' : viewer.id === persona.id
               return (
                 <button
                   key={persona.id}
@@ -751,7 +904,7 @@ const App = () => {
                     onClick={() => {
                     setViewerId(persona.id)
                     // Close practice-type manager when leaving Admin; practitioners manage private types separately.
-                    if (persona.id === 'p2') {
+                    if (persona.label === 'Staff') {
                       setShowAppointmentTypesPreview(false)
                       setShowNewAppointmentTypeModal(false)
                       setEditingAppointmentTypeId(null)
@@ -768,6 +921,20 @@ const App = () => {
                 </button>
               )
             })}
+            {viewer.role === 'Staff' ? (
+              <select
+                className="h-9 rounded-lg border-0 bg-white px-2 text-[12px] font-semibold text-[#0f5f92]"
+                value={viewer.id}
+                aria-label="Staff member"
+                onChange={(event) => setViewerId(event.target.value)}
+              >
+                {staffMembers.map((staff) => (
+                  <option key={staff.id} value={staff.id}>
+                    {staff.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
           </div>
         </div>
 
@@ -978,11 +1145,17 @@ const App = () => {
           <button
             type="button"
             onClick={() => {
-              if (viewer.role === 'Therapist' && manageablePractitioners.length === 0) {
+              if (viewer.role === 'Staff' && manageablePractitioners.length === 0) {
                 setActionToast('No practitioner has granted you staff access yet.')
                 return
               }
               const practitionerId = effectivePractitionerId
+              const requiredPermission =
+                calendarMode === 'availability' ? 'canCreateAvailability' : 'canCreateEvent'
+              if (!hasPermissionForPractitioner(practitionerId, requiredPermission)) {
+                setActionToast("You don't have permission for this practitioner.")
+                return
+              }
               // Prefill around 8:00–9:00 AM
               const eightAmSlot = Math.max(
                 0,
@@ -991,12 +1164,12 @@ const App = () => {
               if (calendarMode === 'availability') {
                 openAvailabilityDraft(practitionerId, eightAmSlot, eightAmSlot + 1)
                 setActivePractitionerForDraft(practitionerId)
-                setLockCreatePractitioner(!!scheduleFocusId || viewer.role === 'Therapist')
+                setLockCreatePractitioner(!!scheduleFocusId || viewer.role === 'Staff')
                 setCreateEventKind('availability')
               } else {
                 setCreateEventKind('appointment')
                 setActivePractitionerForDraft(practitionerId)
-                setLockCreatePractitioner(!!scheduleFocusId || viewer.role === 'Therapist')
+                setLockCreatePractitioner(!!scheduleFocusId || viewer.role === 'Staff')
                 setAvailabilityDraft(null)
               }
               setIsCreatingEvent(true)
@@ -1100,7 +1273,7 @@ const App = () => {
             open={openFilters.roles}
             onToggle={() => setOpenFilters((prev) => ({ ...prev, roles: !prev.roles }))}
           >
-            {['Practitioner', 'Therapist', 'Admin'].map((role) => (
+            {['Practitioner', 'Therapist', 'Admin', 'Staff'].map((role) => (
               <label key={role} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1.5 hover:bg-slate-50">
                 <input
                   type="checkbox"
@@ -1130,6 +1303,16 @@ const App = () => {
               </label>
             ))}
           </FilterCard>
+
+          {viewer.role === 'Practitioner' ? (
+            <button
+              type="button"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-[#0f5f92] shadow-sm transition hover:bg-[#eef6fb]"
+              onClick={() => openStaffAccessManager(viewer)}
+            >
+              Manage staff access
+            </button>
+          ) : null}
           </div>
 
           {calendarMode === 'availability' ? (
@@ -1402,6 +1585,12 @@ const App = () => {
                       key={p.id}
                       type="button"
                       onClick={() => {
+                        const requiredPermission =
+                          calendarMode === 'availability' ? 'canCreateAvailability' : 'canCreateEvent'
+                        if (!hasPermissionForPractitioner(p.id, requiredPermission)) {
+                          setActionToast("You don't have permission for this practitioner.")
+                          return
+                        }
                         const eightAmSlot = Math.max(
                           0,
                           Math.floor((8 * 60 - GRID_START_MINUTES) / SLOT_MINUTES),
@@ -1532,7 +1721,10 @@ const App = () => {
                     )
                     if (column < 0) return null
                     const isEventMirror = mirroredAvailabilityIds.has(availability.id)
-                    const editable = calendarMode === 'availability' && !isEventMirror
+                    const editable =
+                      calendarMode === 'availability' &&
+                      !isEventMirror &&
+                      hasPermissionForPractitioner(availability.practitionerId, 'canEditAvailability')
                     const showAsBookedInEvents = calendarMode === 'events' || isEventMirror
                     const endMinutes = end.getHours() * 60 + end.getMinutes()
                     const exclusiveEndSlot = Math.max(
@@ -1714,7 +1906,10 @@ const App = () => {
                         : item.practitionerId === eventItem.practitionerId,
                     )
                     if (column < 0) return null
-                    const interactive = calendarMode === 'events' && !eventItem.isExternal
+                    const interactive =
+                      calendarMode === 'events' &&
+                      !eventItem.isExternal &&
+                      hasPermissionForPractitioner(eventItem.practitionerId, 'canEditEvent')
                     const statusLabel = eventItem.isExternal ? 'External' : 'Confirmed'
                     return (
                       <div
@@ -1861,7 +2056,11 @@ const App = () => {
           practitioner={practitioners.find((p) => p.id === selectedEvent.practitionerId)}
           bookableTypes={visibleTypes.filter((type) => type.id !== 'busy-external')}
           updatedByName={viewer.name}
-          canModify={calendarMode === 'events' && !selectedEvent.isExternal}
+          canModify={
+            calendarMode === 'events' &&
+            !selectedEvent.isExternal &&
+            hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')
+          }
           onClose={() => {
             setSelectedEventId(null)
             setIsEditingEvent(false)
@@ -1870,6 +2069,10 @@ const App = () => {
           onStartEdit={() => setIsEditingEvent(true)}
           onCancelEdit={() => setIsEditingEvent(false)}
           onSave={() => {
+            if (!hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')) {
+              setActionToast("You don't have permission for this practitioner.")
+              return
+            }
             const day = new Date(selectedEvent.start)
             const start = setTimeForDate(day, eventEditDraft.startTime)
             const end = setTimeForDate(day, eventEditDraft.endTime)
@@ -1885,11 +2088,13 @@ const App = () => {
             setActionToast('Appointment updated')
           }}
           onDelete={() =>
-            setPendingDelete({
-              type: 'event',
-              id: selectedEvent.id,
-              label: selectedEvent.patientName,
-            })
+            hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')
+              ? setPendingDelete({
+                  type: 'event',
+                  id: selectedEvent.id,
+                  label: selectedEvent.patientName,
+                })
+              : setActionToast("You don't have permission for this practitioner.")
           }
           onGoToVisit={() => {
             const visitDate = new Date(selectedEvent.start)
@@ -1914,11 +2119,114 @@ const App = () => {
             setActionToast(`Email drafted to ${email || 'patient'}@email.com`)
           }}
           onSaveNotes={(notes) => {
+            if (!hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')) {
+              setActionToast("You don't have permission for this practitioner.")
+              return
+            }
             void updateEvent(selectedEvent.id, { notes })
             setEventEditDraft((prev) => (prev ? { ...prev, notes } : prev))
             setActionToast('Notes saved')
           }}
         />
+      ) : null}
+
+      {managingAccessPractitioner ? (
+        <Modal
+          title={`Staff Access · ${managingAccessPractitioner.name}`}
+          onClose={closeStaffAccessManager}
+          footer={
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeStaffAccessManager}
+                className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveStaffAccess}
+                className="h-10 rounded-lg bg-[#0f5f92] px-4 text-sm font-semibold text-white hover:brightness-110"
+              >
+                Save access
+              </button>
+            </div>
+          }
+        >
+          <p className="mb-4 text-sm text-slate-600">
+            Pick a practitioner to see their staff, then turn on access so that staff can create and edit only this calendar.
+          </p>
+          <label className="mb-4 block">
+            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Practitioner</span>
+            <select
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-800 outline-none focus:border-[#0f5f92]/45 focus:ring-2 focus:ring-[#0f5f92]/12"
+              value={managingAccessPractitioner.id}
+              onChange={(event) => {
+                const next = practitioners.find((item) => item.id === event.target.value)
+                if (next) openStaffAccessManager(next)
+              }}
+            >
+              {practitionersForAccess.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {assignedStaffForManager ? (
+            <div className="rounded-xl border border-slate-200 p-3">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!staffAccessDraft.find((item) => item.staffId === assignedStaffForManager.id)}
+                  onChange={() => toggleStaffMemberInDraft(assignedStaffForManager.id)}
+                  className="size-4 accent-[#0f5f92]"
+                />
+                <span className="text-sm font-semibold text-slate-800">{assignedStaffForManager.name}</span>
+                <span className="text-xs text-slate-500">Staff</span>
+              </label>
+              {staffAccessDraft.find((item) => item.staffId === assignedStaffForManager.id) ? (
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-700">
+                  {(
+                    [
+                      ['canCreateEvent', 'Create events'],
+                      ['canEditEvent', 'Edit events'],
+                      ['canCreateAvailability', 'Create availability'],
+                      ['canEditAvailability', 'Edit availability'],
+                    ] as Array<[StaffPermissionKey, string]>
+                  ).map(([permissionKey, label]) => {
+                    const grant = staffAccessDraft.find((item) => item.staffId === assignedStaffForManager.id)
+                    return (
+                      <label key={permissionKey} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={grant?.[permissionKey] ?? false}
+                          onChange={(event) =>
+                            updateDraftPermission(
+                              assignedStaffForManager.id,
+                              permissionKey,
+                              event.target.checked,
+                            )
+                          }
+                          className="size-3.5 accent-[#0f5f92]"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="mt-2 text-[12px] text-slate-500">
+                  Check the box to give {assignedStaffForManager.name} access to this practitioner.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-slate-500">
+              No staff is assigned to this practitioner.
+            </p>
+          )}
+        </Modal>
       ) : null}
 
       {actionToast ? (
@@ -1977,6 +2285,10 @@ const App = () => {
             return createAppointmentType(ownerId, form)
           }}
           onCreateAppointment={(form) => {
+            if (!hasPermissionForPractitioner(form.practitionerId, 'canCreateEvent')) {
+              setActionToast("You don't have permission for this practitioner.")
+              return
+            }
             const eventStartDay = parseDateInput(form.startDate)
             const eventEndDay = parseDateInput(form.endDate || form.startDate)
             const rangeStart = eventStartDay <= eventEndDay ? eventStartDay : eventEndDay
@@ -2035,7 +2347,12 @@ const App = () => {
           onCreateAvailability={(form) => {
             setActivePractitionerForDraft(form.practitionerId)
             const forms = buildAvailabilityForms(form)
+            let deniedCount = 0
             const conflictCount = forms.reduce((count, { practitionerId, payload }) => {
+              if (!hasPermissionForPractitioner(practitionerId, 'canCreateAvailability')) {
+                deniedCount += 1
+                return count
+              }
               const day = parseDateInput(payload.startDate)
               const start = setTimeForDate(day, payload.wholeDay ? WHOLE_DAY_START : payload.startTime)
               const end = setTimeForDate(day, payload.wholeDay ? WHOLE_DAY_END : payload.endTime)
@@ -2051,6 +2368,10 @@ const App = () => {
               setActionToast(
                 `${conflictCount} availability slot${conflictCount > 1 ? 's' : ''} skipped because event is already booked.`,
               )
+            } else if (deniedCount > 0) {
+              setActionToast(
+                `${deniedCount} availability slot${deniedCount > 1 ? 's were' : ' was'} skipped due to permission.`,
+              )
             }
             closeCreatePanel()
           }}
@@ -2059,7 +2380,10 @@ const App = () => {
 
       {selectedAvailability && !isCreatingEvent ? (
         <AvailabilityModal
-          readOnly={calendarMode === 'events'}
+          readOnly={
+            calendarMode === 'events' ||
+            !hasPermissionForPractitioner(selectedAvailability.practitionerId, 'canEditAvailability')
+          }
           initialForm={{
             startDate: toDateInputValue(new Date(selectedAvailability.start)),
             startTime: formatTime(new Date(selectedAvailability.start)),
@@ -2080,7 +2404,8 @@ const App = () => {
           }}
           onSave={(form) => handleAvailabilitySave(form, selectedAvailability.id)}
           onDelete={
-            calendarMode === 'events'
+            calendarMode === 'events' ||
+            !hasPermissionForPractitioner(selectedAvailability.practitionerId, 'canEditAvailability')
               ? undefined
               : () => {
                   setPendingDelete({
