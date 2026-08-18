@@ -13,6 +13,7 @@ type Props = {
   onAddNew: () => void
   onEdit: (type: AppointmentType) => void
   onBack: () => void
+  onManageStaffAccess?: () => void
 }
 
 export const AppointmentTypesPreview = ({
@@ -21,6 +22,7 @@ export const AppointmentTypesPreview = ({
   onAddNew,
   onEdit,
   onBack,
+  onManageStaffAccess,
 }: Props) => {
   const listedTypes = types.filter((type) => type.id !== 'busy-external')
   const globalTypes = listedTypes.filter((type) => type.scope === 'global')
@@ -90,13 +92,24 @@ export const AppointmentTypesPreview = ({
               : 'Practice-default types. New types created here are visible across the practice.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onAddNew}
-          className="h-10 rounded-lg bg-[#0f5f92] px-4 text-[13px] font-semibold text-white shadow-[0_2px_8px_rgba(15,95,146,0.2)] transition hover:brightness-110"
-        >
-          + New appointment type
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isPractitioner && onManageStaffAccess ? (
+            <button
+              type="button"
+              onClick={onManageStaffAccess}
+              className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-[#0f5f92] shadow-sm transition hover:bg-[#eef6fb]"
+            >
+              Manage staff access
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onAddNew}
+            className="h-10 rounded-lg bg-[#0f5f92] px-4 text-[13px] font-semibold text-white shadow-[0_2px_8px_rgba(15,95,146,0.2)] transition hover:brightness-110"
+          >
+            + New appointment type
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-auto p-5">

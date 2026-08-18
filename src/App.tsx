@@ -1304,15 +1304,6 @@ const App = () => {
             ))}
           </FilterCard>
 
-          {viewer.role === 'Practitioner' ? (
-            <button
-              type="button"
-              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-[#0f5f92] shadow-sm transition hover:bg-[#eef6fb]"
-              onClick={() => openStaffAccessManager(viewer)}
-            >
-              Manage staff access
-            </button>
-          ) : null}
           </div>
 
           {calendarMode === 'availability' ? (
@@ -1356,6 +1347,9 @@ const App = () => {
               setShowNewAppointmentTypeModal(true)
             }}
             onBack={() => setShowAppointmentTypesPreview(false)}
+            onManageStaffAccess={
+              viewer.role === 'Practitioner' ? () => openStaffAccessManager(viewer) : undefined
+            }
           />
         ) : (
         <main
