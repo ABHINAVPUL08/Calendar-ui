@@ -9,7 +9,11 @@ export type Practitioner = {
   role: 'Practitioner' | 'Therapist' | 'Admin'
   location: 'North Clinic' | 'West Clinic' | 'Virtual'
   isCurrentUser?: boolean
+  /** IDs of staff members who can manage events/availability on behalf of this practitioner. */
+  staffIds?: string[]
 }
+
+export type TimeUnit = 'min' | 'hours' | 'days'
 
 export type AppointmentType = {
   id: string
@@ -19,7 +23,7 @@ export type AppointmentType = {
   scope: 'global' | 'private'
   /** Private types are visible only to the owning practitioner — not Admin or other doctors. */
   ownerPractitionerId?: string
-  /** Admin practice-default metadata */
+  /** Admin practice-default metadata — duration/buffers stored in minutes; notice in hours; booking in days. */
   baseDurationMin?: number
   patientClass?: 'new' | 'existing' | 'both'
   modalities?: Array<'in-person' | 'telehealth' | 'phone'>
@@ -27,6 +31,11 @@ export type AppointmentType = {
   bookingWindowDays?: number
   bufferBefore?: number
   bufferAfter?: number
+  /** Preferred display units chosen in the type editor. */
+  durationUnit?: TimeUnit
+  bufferUnit?: TimeUnit
+  noticeUnit?: Exclude<TimeUnit, 'min'>
+  bookingUnit?: Exclude<TimeUnit, 'min'>
   /** single = one patient; multiple = group with maxLimit */
   userType?: 'single' | 'multiple'
   maxLimit?: number

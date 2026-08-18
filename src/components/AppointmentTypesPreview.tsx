@@ -1,4 +1,10 @@
 import type { AppointmentType } from '../types'
+import {
+  formatTypeBooking,
+  formatTypeBuffer,
+  formatTypeDuration,
+  formatTypeNotice,
+} from './NewAppointmentTypeModal'
 
 type Props = {
   types: AppointmentType[]
@@ -39,18 +45,10 @@ export const AppointmentTypesPreview = ({
             ) : null}
           </div>
         </td>
-        <td className="px-4 py-3.5 text-slate-600">
-          {type.baseDurationMin ? `${type.baseDurationMin} min` : '—'}
-        </td>
-        <td className="px-4 py-3.5 text-slate-600">
-          {type.noticeWindowHours != null ? `${type.noticeWindowHours}h` : '—'}
-        </td>
-        <td className="px-4 py-3.5 text-slate-600">
-          {type.bookingWindowDays != null ? `${type.bookingWindowDays} days ahead` : '—'}
-        </td>
-        <td className="px-4 py-3.5 text-slate-600">
-          Buffer {type.bufferBefore ?? 0}/{type.bufferAfter ?? 0}
-        </td>
+        <td className="px-4 py-3.5 text-slate-600">{formatTypeDuration(type)}</td>
+        <td className="px-4 py-3.5 text-slate-600">{formatTypeNotice(type)}</td>
+        <td className="px-4 py-3.5 text-slate-600">{formatTypeBooking(type)}</td>
+        <td className="px-4 py-3.5 text-slate-600">{formatTypeBuffer(type)}</td>
         <td className="px-4 py-3.5 text-right">
           {allowEdit ? (
             <button

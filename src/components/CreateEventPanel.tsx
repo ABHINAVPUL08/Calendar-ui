@@ -217,7 +217,9 @@ export const CreateEventPanel = ({
     .map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d])
     .join(', ')
 
-  const recurrenceSummary = `Repeats ${daysLabel || '—'}, ${availability.startTime} – ${availability.endTime}, from ${formatLongDate(availability.startDate)} until ${formatLongDate(availability.endDate || availability.startDate)}.`
+  const recurrenceSummary = `Repeats ${daysLabel || '—'}, ${availability.startTime} – ${availability.endTime}, from ${formatLongDate(availability.startDate)}${
+    availability.endDate ? ` until ${formatLongDate(availability.endDate)}` : ''
+  }.`
 
   const previewTo = patientEmailFromName(appointment.patientName)
   const previewSubject = `Your ${selectedApptType?.name ?? 'appointment'} with ${selectedPractitioner?.name ?? 'your practitioner'} is confirmed`
@@ -1071,14 +1073,12 @@ export const CreateEventPanel = ({
                     />
                   </label>
                   <label>
-                    <span className={labelClass}>
-                      End Date
-                      {required}
-                    </span>
+                    <span className={labelClass}>End Date</span>
                     <input
                       type="date"
                       className={fieldClass}
                       value={availability.endDate}
+                      min={availability.startDate || undefined}
                       onChange={(event) =>
                         setAvailability({ ...availability, endDate: event.target.value })
                       }
@@ -1327,7 +1327,7 @@ export const defaultAvailabilityForm = (args: {
   const dateValue = toDateInputValue(args.date)
   return {
     startDate: dateValue,
-    endDate: dateValue,
+    endDate: '',
     startTime: args.startTime ?? '8:20 AM',
     endTime: args.endTime ?? '9:20 AM',
     attendees: '',

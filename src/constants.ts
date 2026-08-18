@@ -12,9 +12,9 @@ export const START_HOUR = Math.floor(GRID_START_MINUTES / 60)
 export const END_HOUR = 23
 
 export const practitioners: Practitioner[] = [
-  { id: 'p1', name: 'Dr. Thomas Reed', role: 'Practitioner', location: 'North Clinic', isCurrentUser: true },
+  { id: 'p1', name: 'Dr. Thomas Reed', role: 'Practitioner', location: 'North Clinic', isCurrentUser: true, staffIds: ['p2', 'p4'] },
   { id: 'p2', name: 'Mr. Chitraksha Sharma', role: 'Therapist', location: 'West Clinic' },
-  { id: 'p3', name: 'Dr. Om Sharma', role: 'Practitioner', location: 'North Clinic' },
+  { id: 'p3', name: 'Dr. Om Sharma', role: 'Practitioner', location: 'North Clinic', staffIds: ['p4'] },
   { id: 'p4', name: 'Mr. Kapish Sharma', role: 'Therapist', location: 'Virtual' },
   { id: 'p5', name: 'Mr. Madhan Rangaswamy', role: 'Admin', location: 'West Clinic' },
 ]
@@ -104,6 +104,10 @@ export const buildGlobalAppointmentType = (input: {
   bufferAfter?: number
   noticeWindowHours?: number
   bookingWindowDays?: number
+  durationUnit?: AppointmentType['durationUnit']
+  bufferUnit?: AppointmentType['bufferUnit']
+  noticeUnit?: AppointmentType['noticeUnit']
+  bookingUnit?: AppointmentType['bookingUnit']
   userType?: 'single' | 'multiple'
   maxLimit?: number
 }): AppointmentType => ({
@@ -119,6 +123,10 @@ export const buildGlobalAppointmentType = (input: {
   bookingWindowDays: input.bookingWindowDays ?? 60,
   bufferBefore: input.bufferBefore ?? 0,
   bufferAfter: input.bufferAfter ?? 0,
+  durationUnit: input.durationUnit ?? 'min',
+  bufferUnit: input.bufferUnit ?? 'min',
+  noticeUnit: input.noticeUnit ?? 'hours',
+  bookingUnit: input.bookingUnit ?? 'days',
   userType: input.userType ?? 'single',
   maxLimit: input.userType === 'multiple' ? Math.max(1, input.maxLimit ?? 1) : 1,
 })
@@ -165,6 +173,10 @@ export const buildPrivateAppointmentType = (
     bufferAfter?: number
     noticeWindowHours?: number
     bookingWindowDays?: number
+    durationUnit?: AppointmentType['durationUnit']
+    bufferUnit?: AppointmentType['bufferUnit']
+    noticeUnit?: AppointmentType['noticeUnit']
+    bookingUnit?: AppointmentType['bookingUnit']
     userType?: 'single' | 'multiple'
     maxLimit?: number
   },
@@ -185,6 +197,10 @@ export const buildPrivateAppointmentType = (
     bookingWindowDays: extras?.bookingWindowDays ?? 60,
     bufferBefore: extras?.bufferBefore ?? 0,
     bufferAfter: extras?.bufferAfter ?? 0,
+    durationUnit: extras?.durationUnit ?? 'min',
+    bufferUnit: extras?.bufferUnit ?? 'min',
+    noticeUnit: extras?.noticeUnit ?? 'hours',
+    bookingUnit: extras?.bookingUnit ?? 'days',
     userType,
     maxLimit: userType === 'multiple' ? Math.max(1, extras?.maxLimit ?? 1) : 1,
   }

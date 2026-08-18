@@ -734,6 +734,10 @@ export const useCalendarState = () => {
       bufferAfter?: number
       noticeWindowHours?: number
       bookingWindowDays?: number
+      durationUnit?: AppointmentType['durationUnit']
+      bufferUnit?: AppointmentType['bufferUnit']
+      noticeUnit?: AppointmentType['noticeUnit']
+      bookingUnit?: AppointmentType['bookingUnit']
       userType?: 'single' | 'multiple'
       maxLimit?: number
     },
@@ -768,6 +772,10 @@ export const useCalendarState = () => {
     bufferAfter?: number
     noticeWindowHours?: number
     bookingWindowDays?: number
+    durationUnit?: AppointmentType['durationUnit']
+    bufferUnit?: AppointmentType['bufferUnit']
+    noticeUnit?: AppointmentType['noticeUnit']
+    bookingUnit?: AppointmentType['bookingUnit']
     userType?: 'single' | 'multiple'
     maxLimit?: number
   }) => {
@@ -800,6 +808,10 @@ export const useCalendarState = () => {
       bufferAfter?: number
       noticeWindowHours?: number
       bookingWindowDays?: number
+      durationUnit?: AppointmentType['durationUnit']
+      bufferUnit?: AppointmentType['bufferUnit']
+      noticeUnit?: AppointmentType['noticeUnit']
+      bookingUnit?: AppointmentType['bookingUnit']
       userType?: 'single' | 'multiple'
       maxLimit?: number
     },
@@ -835,6 +847,10 @@ export const useCalendarState = () => {
       bufferAfter: input.bufferAfter ?? 0,
       noticeWindowHours: input.noticeWindowHours ?? existing.noticeWindowHours ?? 24,
       bookingWindowDays: input.bookingWindowDays ?? existing.bookingWindowDays ?? 60,
+      durationUnit: input.durationUnit ?? existing.durationUnit ?? 'min',
+      bufferUnit: input.bufferUnit ?? existing.bufferUnit ?? 'min',
+      noticeUnit: input.noticeUnit ?? existing.noticeUnit ?? 'hours',
+      bookingUnit: input.bookingUnit ?? existing.bookingUnit ?? 'days',
       userType,
       maxLimit: userType === 'multiple' ? Math.max(1, input.maxLimit ?? existing.maxLimit ?? 1) : 1,
     }
@@ -855,6 +871,10 @@ export const useCalendarState = () => {
       bufferAfter?: number
       noticeWindowHours?: number
       bookingWindowDays?: number
+      durationUnit?: AppointmentType['durationUnit']
+      bufferUnit?: AppointmentType['bufferUnit']
+      noticeUnit?: AppointmentType['noticeUnit']
+      bookingUnit?: AppointmentType['bookingUnit']
       userType?: 'single' | 'multiple'
       maxLimit?: number
     },
