@@ -31,6 +31,7 @@ type Props = {
   onSendFormReminder: () => void
   onEmailPatient: () => void
   onSaveNotes: (notes: string) => void
+  onApprovePending?: () => void
 }
 
 const actionBtnClass =
@@ -63,6 +64,7 @@ export const EventDetailsModal = ({
   onSendFormReminder,
   onEmailPatient,
   onSaveNotes,
+  onApprovePending,
 }: Props) => {
   const [notesDraft, setNotesDraft] = useState(event.notes)
   const start = new Date(event.start)
@@ -201,7 +203,23 @@ export const EventDetailsModal = ({
               {title}
             </h2>
             {!event.isExternal ? (
-              <p className="mt-0.5 truncate text-[13px] text-slate-500">{event.patientName}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <p className="truncate text-[13px] text-slate-500">{event.patientName}</p>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                    event.bookingStatus === 'pending'
+                      ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                      : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                  }`}
+                >
+                  {event.bookingStatus === 'pending' ? 'Pending · patient booked' : 'Confirmed'}
+                </span>
+                {event.bookingStatus === 'pending' ? (
+                  <span className="text-[12px] text-slate-400">
+                    Practitioner or assigned staff can approve
+                  </span>
+                ) : null}
+              </div>
             ) : null}
           </div>
           <button
@@ -363,8 +381,18 @@ export const EventDetailsModal = ({
                   onClick={onEmailPatient}
                   disabled={event.isExternal || !event.patientName.trim()}
                 >
-                  Email Patient
+                  Message Patient
                 </button>
+                {event.bookingStatus === 'pending' && onApprovePending ? (
+                  <button
+                    type="button"
+                    className={`${actionBtnClass} border-emerald-200 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800`}
+                    onClick={onApprovePending}
+                    disabled={!canModify}
+                  >
+                    Approve booking
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={`${actionBtnClass} border-rose-200 text-rose-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 hover:shadow-[0_10px_22px_rgba(225,29,72,0.16)]`}

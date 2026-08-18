@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   appointmentTypesForPractitioner,
   formsForAppointmentType,
+  MANUAL_EXTRA_FORMS,
   practitioners,
   WHOLE_DAY_END,
   WHOLE_DAY_START,
@@ -166,6 +167,7 @@ export const CreateEventPanel = ({
     () => appointmentDefaults.assignedFormIds ?? [],
   )
   const [formsDueDays, setFormsDueDays] = useState(appointmentDefaults.formsDueDays ?? 1)
+  const [extraFormIds, setExtraFormIds] = useState<string[]>([])
   const [selectedDraftId, setSelectedDraftId] = useState<1 | 2 | 3>(1)
 
   const bookableTypes = useMemo(
@@ -247,8 +249,15 @@ export const CreateEventPanel = ({
 
   const reminders = [
     { when: 'Immediately', detail: 'Confirmation email · English (US)', active: true },
-    { when: '48 hours before', detail: 'Reminder + intake form nudge', active: false },
-    { when: '2 hours before', detail: 'Reminder with join details', active: false },
+    {
+      when: '48 hours before',
+      detail:
+        extraFormIds.length > 0
+          ? `Reminder + leftover extra forms only (${MANUAL_EXTRA_FORMS.filter((form) => extraFormIds.includes(form.id)).map((form) => form.name).join(', ')})`
+          : 'Reminder + leftover incomplete forms only',
+      active: false,
+    },
+    { when: '2 hours before', detail: 'Reminder with join details (forms skipped if already done)', active: false },
   ]
 
   const toggleAvailabilityType = (id: string) => {
@@ -279,6 +288,7 @@ export const CreateEventPanel = ({
     }))
     // Forms list changes with type — clear previous assignments
     setAssignedFormIds([])
+    setExtraFormIds([])
   }
 
   const toggleAssignedForm = (formId: string) => {
@@ -363,7 +373,7 @@ export const CreateEventPanel = ({
       ? 'View only in this phase — content, language and timing are practice settings.'
       : kind === 'appointment'
         ? 'Nothing is sent until you confirm on the preview.'
-        : 'Windows can be scheduled up to 90 days out.'
+        : 'Windows can be scheduled up to 12 months, or with no end date (unlimited).'
 
   const primaryLabel =
     step === 'preview'
@@ -594,7 +604,7 @@ export const CreateEventPanel = ({
                           <span className="size-1.5 rounded-full bg-[#3f8f6d]" />
                           <span className="flex-1">{form.name}</span>
                           <span className="text-[10.5px] text-[#93a2b1]">
-                            due {formsDueDays}d before
+                            linked to type · no extra due date
                           </span>
                         </div>
                       ))
@@ -799,10 +809,10 @@ export const CreateEventPanel = ({
                       <>
                         <div className="flex items-center gap-1.5 border-y border-[#eef2f6] bg-[#faf8fd] px-3 py-1.5">
                           <span className="text-[10px] font-bold tracking-wide text-[#7b5aa6] uppercase">
-                            Private Types
+                            My types
                           </span>
                           <span className="text-[10px] text-[#a08cc0]">
-                            owner only — hidden from Admin & others
+                            yours only — hidden from Admin & others
                           </span>
                         </div>
 
@@ -854,27 +864,29 @@ export const CreateEventPanel = ({
                   <div>
                     <h3 className="text-[14px] font-semibold text-[#1c2b3a]">Select Forms</h3>
                     <p className="mt-0.5 text-[12px] text-[#8b9aa8]">
-                      Click the checkboxes to assign forms for{' '}
+                      Forms linked to{' '}
                       <span className="font-semibold text-[#3c4b5a]">
                         {selectedApptType?.name ?? 'this appointment'}
-                      </span>
-                      .
+                      </span>{' '}
+                      do not need a due date. Extra forms you add by hand do.
                     </p>
                   </div>
-                  <label className="w-[160px]">
-                    <span className={labelClass}>Forms Due (Days Before Visit)</span>
-                    <select
-                      className={fieldClass}
-                      value={formsDueDays}
-                      onChange={(event) => setFormsDueDays(Number(event.target.value))}
-                    >
-                      {[1, 2, 3, 5, 7].map((days) => (
-                        <option key={days} value={days}>
-                          {days}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {extraFormIds.length > 0 ? (
+                    <label className="w-[160px]">
+                      <span className={labelClass}>Extra forms due (days before)</span>
+                      <select
+                        className={fieldClass}
+                        value={formsDueDays}
+                        onChange={(event) => setFormsDueDays(Number(event.target.value))}
+                      >
+                        {[1, 2, 3, 5, 7].map((days) => (
+                          <option key={days} value={days}>
+                            {days}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
 
                 <div className="mb-3 flex flex-wrap gap-3">
@@ -950,12 +962,10 @@ export const CreateEventPanel = ({
                           </span>
                         </span>
                         <span className="text-[12px] text-[#5a6b7b] max-[700px]:hidden">
-                          {isAssigned
-                            ? formatShortDate(appointment.startDate, -formsDueDays)
-                            : '—'}
+                          {isAssigned ? 'With type' : '—'}
                         </span>
                         <span className="text-[12px] text-[#8b9aa8] max-[700px]:hidden">
-                          {isAssigned ? `${formsDueDays} day(s) before` : '—'}
+                          {isAssigned ? 'No due date' : '—'}
                         </span>
                       </label>
                     )
@@ -963,9 +973,41 @@ export const CreateEventPanel = ({
                 </div>
 
                 <p className="mt-2 text-[11.5px] text-[#8b9aa8]">
-                  {assignedFormIds.length} of {availableForms.length} form
-                  {availableForms.length === 1 ? '' : 's'} assigned to the patient.
+                  {assignedFormIds.length} of {availableForms.length} type form
+                  {availableForms.length === 1 ? '' : 's'} assigned. Later reminders mention only incomplete forms.
                 </p>
+
+                <div className="mt-4">
+                  <h4 className="mb-1.5 text-[12px] font-semibold text-[#1c2b3a]">Add extra forms (manual)</h4>
+                  <div className="overflow-hidden rounded-md border border-[#e2e8ee]">
+                    {MANUAL_EXTRA_FORMS.map((form) => {
+                      const isAssigned = extraFormIds.includes(form.id)
+                      return (
+                        <label
+                          key={form.id}
+                          className="flex cursor-pointer items-center gap-2.5 border-t border-[#eef2f6] bg-white px-3 py-2.5 first:border-t-0 hover:bg-[#f8fafc]"
+                        >
+                          <input
+                            type="checkbox"
+                            className="size-3.5 accent-[#0e4f7c]"
+                            checked={isAssigned}
+                            onChange={() =>
+                              setExtraFormIds((prev) =>
+                                prev.includes(form.id)
+                                  ? prev.filter((id) => id !== form.id)
+                                  : [...prev, form.id],
+                              )
+                            }
+                          />
+                          <span className="flex-1 text-[12.5px] font-medium text-[#1c2b3a]">{form.name}</span>
+                          <span className="text-[11px] text-[#8b9aa8]">
+                            {isAssigned ? `Due ${formsDueDays}d before` : 'Needs a due date'}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
             ) : null}
           </div>
@@ -1128,10 +1170,10 @@ export const CreateEventPanel = ({
                       <>
                         <div className="flex items-center gap-1.5 border-y border-[#eef2f6] bg-[#faf8fd] px-3 py-1.5">
                           <span className="text-[10px] font-bold tracking-wide text-[#7b5aa6] uppercase">
-                            Private Types
+                            My types
                           </span>
                           <span className="text-[10px] text-[#a08cc0]">
-                            owner only — hidden from Admin & others
+                            yours only — hidden from Admin & others
                           </span>
                         </div>
 
@@ -1255,6 +1297,7 @@ export const buildAvailabilityForms = (
     repeat: repeatDays.length > 1 || form.startDate !== (form.endDate || form.startDate) ? 'weekly' : 'none',
     repeatDays: repeatDays.length ? repeatDays : [rangeStart.getDay()],
     repeatUntil: form.endDate || form.startDate,
+    unlimited: false,
   }
 
   const results: Array<{ practitionerId: string; payload: AvailabilityFormState }> = []
