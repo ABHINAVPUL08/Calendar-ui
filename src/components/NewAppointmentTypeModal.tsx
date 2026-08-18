@@ -73,6 +73,15 @@ const noticeToDisplay = (hours: number, unit: LeadUnit): number => {
 const noticeToHours = (display: number, unit: LeadUnit): number =>
   Math.max(0, Math.round(unit === 'hours' ? display : display * 24))
 
+const contrastText = (hex: string) => {
+  const raw = hex.replace('#', '')
+  if (raw.length !== 6) return '#ffffff'
+  const r = Number.parseInt(raw.slice(0, 2), 16)
+  const g = Number.parseInt(raw.slice(2, 4), 16)
+  const b = Number.parseInt(raw.slice(4, 6), 16)
+  return (r * 299 + g * 587 + b * 114) / 1000 >= 160 ? '#0b2f4a' : '#ffffff'
+}
+
 const bookingToDisplay = (days: number, unit: LeadUnit): number => {
   if (unit === 'days') return days
   const value = days * 24
@@ -186,7 +195,7 @@ export const NewAppointmentTypeModal = ({
 
   const selectedPalette = PRACTICE_TYPE_COLORS.find((item) => item.color === color) ?? {
     color,
-    textColor: initialType?.textColor ?? '#ffffff',
+    textColor: contrastText(color),
   }
   const parsedMaxLimit = Number(maxLimitInput)
   const durationMinutes = toMinutes(durationValue, durationUnit)
@@ -238,7 +247,7 @@ export const NewAppointmentTypeModal = ({
               </h2>
               <p className="mt-1 text-[12px] text-slate-500">
                 {effectiveScope === 'private'
-                  ? 'Private type — only available for this practitioner. Admin and other doctors will not see it in their type lists.'
+                  ? 'My appointment type — only on this practitioner\'s calendar. Admin and other doctors will not see it in their lists.'
                   : 'Practice-default type available across the practice.'}
               </p>
             </div>
@@ -321,17 +330,38 @@ export const NewAppointmentTypeModal = ({
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <ValueWithUnit
-                label="Notice window"
-                value={noticeValue}
-                unit={noticeUnit}
-                units={LEAD_UNITS}
-                min={0}
-                step={noticeUnit === 'hours' ? 1 : 0.5}
-                onValueChange={(value) => setNoticeValue(Math.max(0, value || 0))}
-                onUnitChange={(unit) => changeNoticeUnit(unit as LeadUnit)}
-                hint="Minimum lead time before booking."
-              />
+              <div>
+                <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Notice window</span>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step={noticeUnit === 'hours' ? 1 : 0.5}
+                    className={numberInputClass}
+                    value={noticeValue}
+                    onChange={(event) => setNoticeValue(Math.max(0, Number(event.target.value) || 0))}
+                  />
+                  <div className="inline-flex h-11 shrink-0 rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+                    {LEAD_UNITS.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => changeNoticeUnit(item.id)}
+                        className={`min-w-[68px] rounded-md px-2.5 text-[12px] font-semibold transition ${
+                          noticeUnit === item.id
+                            ? 'bg-white text-[#0f5f92] shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <span className="mt-1 block text-[11px] text-slate-400">
+                  Minimum lead time. Use hours (e.g. 24) or days (e.g. 7).
+                </span>
+              </div>
               <ValueWithUnit
                 label="Booking window"
                 value={bookingValue}
@@ -341,7 +371,7 @@ export const NewAppointmentTypeModal = ({
                 step={bookingUnit === 'days' ? 1 : 1}
                 onValueChange={(value) => setBookingValue(Math.max(0, value || 0))}
                 onUnitChange={(unit) => changeBookingUnit(unit as LeadUnit)}
-                hint="How far ahead patients can book."
+                hint="How far ahead patients can book. 1 month = 30 days."
               />
             </div>
 
@@ -416,7 +446,7 @@ export const NewAppointmentTypeModal = ({
 
             <div>
               <span className="mb-1.5 block text-[13px] font-semibold text-slate-700">Color</span>
-              <div className="flex flex-wrap gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
                 {PRACTICE_TYPE_COLORS.map((swatch) => {
                   const active = color === swatch.color
                   return (
@@ -434,7 +464,20 @@ export const NewAppointmentTypeModal = ({
                     </button>
                   )
                 })}
+                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(event) => setColor(event.target.value)}
+                    className="size-7 cursor-pointer rounded border-0 bg-transparent p-0"
+                    aria-label="Custom color"
+                  />
+                  <span className="text-[12px] font-semibold text-slate-600">Custom</span>
+                </label>
               </div>
+              <span className="mt-1.5 block text-[11px] text-slate-400">
+                Pick a practice color or a custom RGB for branding.
+              </span>
             </div>
           </div>
 

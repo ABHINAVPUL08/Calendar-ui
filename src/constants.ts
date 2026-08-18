@@ -10,6 +10,8 @@ export const SLOT_COUNT = (GRID_END_MINUTES - GRID_START_MINUTES) / SLOT_MINUTES
 /** @deprecated Prefer GRID_START_MINUTES — kept for callers expecting an hour */
 export const START_HOUR = Math.floor(GRID_START_MINUTES / 60)
 export const END_HOUR = 23
+/** How far ahead availability can be scheduled (client review: 12 months, not 60/90 days). */
+export const AVAILABILITY_HORIZON_DAYS = 365
 
 export const practitioners: Practitioner[] = [
   {
@@ -20,7 +22,15 @@ export const practitioners: Practitioner[] = [
     isCurrentUser: true,
     assignedStaffId: 's1',
     staffIds: ['s1'],
-    staffAccess: [],
+    staffAccess: [
+      {
+        staffId: 's1',
+        canCreateEvent: true,
+        canEditEvent: true,
+        canCreateAvailability: true,
+        canEditAvailability: true,
+      },
+    ],
   },
   {
     id: 'p2',
@@ -96,7 +106,7 @@ export const appointmentTypes: AppointmentType[] = [
   { id: 'busy-external', name: 'Busy - External', color: '#d9e0e6', textColor: '#3e5569', scope: 'global' },
   {
     id: 'lab-review-private',
-    name: 'Lab Review (Private)',
+    name: 'Lab Review',
     color: '#006b67',
     textColor: '#ffffff',
     scope: 'private',
@@ -104,7 +114,7 @@ export const appointmentTypes: AppointmentType[] = [
   },
   {
     id: 'therapy-intake-private',
-    name: 'Therapy Intake (Private)',
+    name: 'Therapy Intake',
     color: '#8b4d6b',
     textColor: '#ffffff',
     scope: 'private',
@@ -235,10 +245,14 @@ export const buildPrivateAppointmentType = (
 }
 
 export const availabilityColors: Record<AvailabilityStatus, string> = {
-  available: 'rgba(166, 234, 185, 0.72)',
-  busy: 'rgba(209, 217, 224, 0.92)',
-  blocked: 'rgba(209, 217, 224, 0.92)',
+  /** Events calendar overlay — lighter than booked appointments so they stay distinct. */
+  available: 'rgba(190, 245, 214, 0.34)',
+  busy: 'rgba(209, 217, 224, 0.72)',
+  blocked: 'rgba(209, 217, 224, 0.72)',
 }
+
+/** Slightly stronger green on the availability editor so slots are easy to paint, still lighter than events. */
+export const availabilityEditorColor = 'rgba(154, 228, 180, 0.55)'
 
 export const WHOLE_DAY_START = '12:00 AM'
 export const WHOLE_DAY_END = '11:30 PM'
@@ -281,6 +295,12 @@ export const FORMS_BY_APPOINTMENT_TYPE: Record<string, PatientFormTemplate[]> = 
     { id: 'goals-readiness', name: 'Goals, Readiness & Support', defaultStatus: 'Unassigned' },
   ],
 }
+
+/** Extra forms a doctor can assign by hand — these need a due date (PDF). */
+export const MANUAL_EXTRA_FORMS: PatientFormTemplate[] = [
+  { id: 'photo-consent-extra', name: 'Photo consent', defaultStatus: 'Unassigned' },
+  { id: 'insurance-update-extra', name: 'Insurance update', defaultStatus: 'Unassigned' },
+]
 
 export const DEFAULT_PATIENT_FORMS: PatientFormTemplate[] = [
   { id: 'about-you', name: 'About You Form', defaultStatus: 'Unassigned' },

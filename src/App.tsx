@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   accessibleAppointmentTypes,
   availabilityColors,
+  availabilityEditorColor,
+  AVAILABILITY_HORIZON_DAYS,
   formsForAppointmentType,
   GRID_START_MINUTES,
   practitioners,
@@ -26,6 +28,8 @@ import { AppointmentTypesPreview } from './components/AppointmentTypesPreview'
 import { NewAppointmentTypeModal } from './components/NewAppointmentTypeModal'
 import { AppNavRail } from './components/AppNavRail'
 import { EventDetailsModal } from './components/EventDetailsModal'
+import { PublicBookingPage } from './components/PublicBookingPage'
+import { AuditLogModal } from './components/AuditLogModal'
 import { ContextMenu } from './components/ContextMenu'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Modal } from './components/Modal'
@@ -189,6 +193,8 @@ const App = () => {
         : viewer.id
   const [schedulePreviewId, setSchedulePreviewId] = useState<string | null>(null)
   const [showAppointmentTypesPreview, setShowAppointmentTypesPreview] = useState(false)
+  const [showPublicBookingPage, setShowPublicBookingPage] = useState(false)
+  const [showAuditLog, setShowAuditLog] = useState(false)
   const [showNewAppointmentTypeModal, setShowNewAppointmentTypeModal] = useState(false)
   const [editingAppointmentTypeId, setEditingAppointmentTypeId] = useState<string | null>(null)
   const [actionToast, setActionToast] = useState<string | null>(null)
@@ -1247,7 +1253,7 @@ const App = () => {
                 </label>
               ))}
             <p className="mb-1 mt-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              Private (you only)
+              My types
             </p>
             {visibleTypes
               .filter((item) => item.scope === 'private')
@@ -1264,7 +1270,7 @@ const App = () => {
                 </label>
               ))}
             {visibleTypes.every((item) => item.scope !== 'private') ? (
-              <p className="px-1 text-[12px] text-slate-400">No private types for your account.</p>
+              <p className="px-1 text-[12px] text-slate-400">No custom types for your account yet.</p>
             ) : null}
           </FilterCard>
 
@@ -1311,14 +1317,32 @@ const App = () => {
               <p className="mb-2 font-semibold text-slate-700">Availability legend</p>
               <div className="space-y-1.5 text-slate-600">
                 <div className="flex items-center gap-2">
-                  <span className="h-3 w-5 rounded" style={{ background: availabilityColors.available }} /> Available
+                  <span className="h-3 w-5 rounded" style={{ background: availabilityEditorColor }} /> Open hours
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="h-3 w-5 rounded" style={{ background: availabilityColors.blocked }} /> Blocked
                 </div>
+                <p className="pt-1 text-[10px] leading-snug text-slate-400">
+                  This green is stronger for editing. On the Events calendar it appears lighter, behind appointments.
+                </p>
               </div>
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-xl bg-white p-3 text-[11px] ring-1 ring-slate-200/80">
+              <p className="mb-2 font-semibold text-slate-700">Schedule legend</p>
+              <div className="space-y-1.5 text-slate-600">
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-5 rounded" style={{ background: availabilityColors.available }} /> Open availability
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-5 rounded bg-[#0f5f92]" /> Booked appointment
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-5 rounded bg-amber-400" /> Pending (patient booked)
+                </div>
+              </div>
+            </div>
+          )}
         </aside>
 
         {showAppointmentTypesPreview && canConfigureAppointmentTypes ? (
@@ -1350,6 +1374,18 @@ const App = () => {
             onManageStaffAccess={
               viewer.role === 'Practitioner' ? () => openStaffAccessManager(viewer) : undefined
             }
+            publicBookingLink={
+              viewer.role === 'Practitioner'
+                ? `https://schedule.revelia.app/${viewer.name
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-|-$/g, '')}`
+                : undefined
+            }
+            onOpenBookingPage={
+              viewer.role === 'Practitioner' ? () => setShowPublicBookingPage(true) : undefined
+            }
+            onOpenAuditLog={() => setShowAuditLog(true)}
           />
         ) : (
         <main
@@ -1376,8 +1412,8 @@ const App = () => {
                 {scheduleFocusId
                   ? 'Full-day free, busy, blocked, and booked times for this staff member'
                   : calendarMode === 'events'
-                    ? 'Only booked appointments and external busy time'
-                    : 'Only availability, busy, and blocked blocks — click and drag to create'}
+                    ? 'Appointments sit on top. Light green behind them is open availability.'
+                    : 'Paint open hours, busy, and blocked blocks — click and drag to create'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1422,35 +1458,25 @@ const App = () => {
                       ? allAvailabilityBlocks.filter((a) => isSameDay(new Date(a.start), day))
                       : []
                   const dayAvailability = dayAvailabilityBlocks.length
+                  const hasOpenHours = dayAvailabilityBlocks.some((block) => block.status === 'available')
                   const monthBookedItems =
                     calendarMode === 'events'
-                      ? [
-                          ...dayEvents.map((eventItem) => ({
+                      ? dayEvents
+                          .map((eventItem) => ({
                             id: eventItem.id,
-                            label: eventItem.isExternal ? 'Busy' : eventItem.patientName,
+                            label: eventItem.isExternal
+                              ? 'Busy'
+                              : eventItem.bookingStatus === 'pending'
+                                ? `Pending · ${eventItem.patientName}`
+                                : eventItem.patientName,
                             start: eventItem.start,
                             color:
-                              appointmentTypeMap.get(eventItem.appointmentTypeId)?.color ?? '#0f5f92',
+                              eventItem.bookingStatus === 'pending'
+                                ? '#d97706'
+                                : appointmentTypeMap.get(eventItem.appointmentTypeId)?.color ?? '#0f5f92',
                             title: `${eventItem.patientName} · ${appointmentTypeMap.get(eventItem.appointmentTypeId)?.name ?? ''}`,
-                          })),
-                          ...dayAvailabilityBlocks.map((block) => {
-                            const type = appointmentTypeMap.get(block.appointmentTypeId || '')
-                            return {
-                              id: `avail-${block.id}`,
-                              label:
-                                block.status === 'blocked'
-                                  ? 'Blocked'
-                                  : type?.name
-                                    ? `Booked · ${type.name}`
-                                    : 'Booked',
-                              start: block.start,
-                              color: type?.color ?? '#d9e0e6',
-                              title: `${block.status} · ${type?.name ?? 'Availability'}`,
-                            }
-                          }),
-                        ].sort(
-                          (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
-                        )
+                          }))
+                          .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
                       : []
                   return (
                     <button
@@ -1492,6 +1518,9 @@ const App = () => {
                               <p className="text-[10px] font-semibold text-slate-500">
                                 +{monthBookedItems.length - 3} more
                               </p>
+                            ) : null}
+                            {calendarMode === 'events' && hasOpenHours ? (
+                              <p className="text-[10px] font-semibold text-emerald-600/80">Available</p>
                             ) : null}
                             {calendarMode === 'availability' ? (
                               <p className="text-[10px] text-emerald-700">
@@ -1715,11 +1744,12 @@ const App = () => {
                     )
                     if (column < 0) return null
                     const isEventMirror = mirroredAvailabilityIds.has(availability.id)
+                    const isEventsOverlay = calendarMode === 'events' && !isEventMirror
                     const editable =
                       calendarMode === 'availability' &&
                       !isEventMirror &&
                       hasPermissionForPractitioner(availability.practitionerId, 'canEditAvailability')
-                    const showAsBookedInEvents = calendarMode === 'events' || isEventMirror
+                    const showAsBooked = isEventMirror
                     const endMinutes = end.getHours() * 60 + end.getMinutes()
                     const exclusiveEndSlot = Math.max(
                       startSlot + 1,
@@ -1728,6 +1758,12 @@ const App = () => {
                     const rowStart = startSlot + 2
                     const rowEnd = exclusiveEndSlot + 2
                     const blockHeight = Math.max((exclusiveEndSlot - startSlot) * rowHeight - 6, 52)
+                    const overlayLabel =
+                      availability.status === 'blocked'
+                        ? 'Blocked'
+                        : availability.status === 'busy'
+                          ? 'Busy'
+                          : 'Available'
                     const bookedLabel =
                       availability.status === 'blocked'
                         ? 'Blocked'
@@ -1735,31 +1771,47 @@ const App = () => {
                           ? `Booked · ${type.name}`
                           : 'Booked'
                     const mirroredEventId = mirroredEventIdByAvailabilityId.get(availability.id)
+                    const overlayFill =
+                      availability.status === 'available'
+                        ? availabilityColors.available
+                        : availabilityColors[availability.status]
+                    const editorFill =
+                      availability.status === 'available'
+                        ? availabilityEditorColor
+                        : availabilityColors[availability.status]
                     return (
                       <div
                         key={availability.id}
-                        className={`pointer-events-auto group relative z-[5] m-1 flex flex-col justify-start gap-0.5 overflow-visible rounded-lg px-2.5 py-1.5 transition-all duration-200 ${
-                          editable || showAsBookedInEvents
-                            ? 'cursor-pointer hover:brightness-[0.98]'
-                            : 'pointer-events-none'
+                        className={`group relative m-1 flex flex-col justify-start gap-0.5 overflow-visible rounded-lg px-2.5 py-1.5 transition-all duration-200 ${
+                          isEventsOverlay
+                            ? 'pointer-events-none z-[3]'
+                            : `pointer-events-auto z-[5] ${
+                                editable || showAsBooked
+                                  ? 'cursor-pointer hover:brightness-[0.98]'
+                                  : 'pointer-events-none'
+                              }`
                         } ${
                           recentlyCreatedAvailabilityIds.has(availability.id)
                             ? 'animate-[blockIn_.2s_ease-out]'
                             : ''
                         } ${pendingAvailabilityIds.has(availability.id) ? 'opacity-70' : ''} ${
-                          showAsBookedInEvents
+                          showAsBooked
                             ? 'border border-white/35 shadow-[0_2px_8px_rgba(16,40,70,0.16)]'
-                            : ''
+                            : isEventsOverlay
+                              ? 'ring-1 ring-emerald-200/40'
+                              : ''
                         }`}
                         style={{
                           gridColumn: `${column + 2}`,
                           gridRow: `${rowStart} / ${rowEnd}`,
                           alignSelf: 'start',
                           minHeight: blockHeight,
-                          background: showAsBookedInEvents
+                          background: showAsBooked
                             ? type?.color ?? availabilityColors.blocked
-                            : availabilityColors[availability.status],
-                          color: showAsBookedInEvents ? type?.textColor ?? '#3e5569' : undefined,
+                            : isEventsOverlay
+                              ? overlayFill
+                              : editorFill,
+                          color: showAsBooked ? type?.textColor ?? '#3e5569' : undefined,
                         }}
                         onContextMenu={(event) => {
                           if (!editable) return
@@ -1775,21 +1827,22 @@ const App = () => {
                           })
                         }}
                         onClick={() => {
-                          // Availability board: edit. Events board: view-only details.
+                          if (isEventsOverlay) return
                           if (isEventMirror && mirroredEventId) {
                             setSelectedEventId(mirroredEventId)
                             return
                           }
-                          if (editable || showAsBookedInEvents) {
+                          if (editable || showAsBooked) {
                             setAvailabilityEditingId(availability.id)
                           }
                         }}
                         onKeyDown={(event) => {
+                          if (isEventsOverlay) return
                           if (isEventMirror && event.key === 'Enter' && mirroredEventId) {
                             setSelectedEventId(mirroredEventId)
                             return
                           }
-                          if (showAsBookedInEvents && event.key === 'Enter') {
+                          if (showAsBooked && event.key === 'Enter') {
                             setAvailabilityEditingId(availability.id)
                             return
                           }
@@ -1803,32 +1856,46 @@ const App = () => {
                             })
                           }
                         }}
-                        tabIndex={editable || showAsBookedInEvents ? 0 : -1}
+                        tabIndex={isEventsOverlay ? -1 : editable || showAsBooked ? 0 : -1}
                         title={
-                          showAsBookedInEvents
-                            ? `${bookedLabel} · ${formatTime(start)} - ${formatTime(end)}`
-                            : `${availability.status.toUpperCase()} · ${formatTime(start)} - ${formatTime(end)}`
+                          isEventsOverlay
+                            ? `${overlayLabel} · ${formatTime(start)} - ${formatTime(end)}`
+                            : showAsBooked
+                              ? `${bookedLabel} · ${formatTime(start)} - ${formatTime(end)}`
+                              : `${availability.status.toUpperCase()} · ${formatTime(start)} - ${formatTime(end)}`
                         }
                         aria-label={
-                          showAsBookedInEvents
-                            ? `${bookedLabel} from ${formatTime(start)} to ${formatTime(end)}`
-                            : `${availability.status} from ${formatTime(start)} to ${formatTime(end)}`
+                          isEventsOverlay
+                            ? `${overlayLabel} from ${formatTime(start)} to ${formatTime(end)}`
+                            : showAsBooked
+                              ? `${bookedLabel} from ${formatTime(start)} to ${formatTime(end)}`
+                              : `${availability.status} from ${formatTime(start)} to ${formatTime(end)}`
                         }
                       >
                         <div
                           className={`pointer-events-none flex h-full flex-col justify-start gap-0.5 text-[10px] font-bold ${
-                            showAsBookedInEvents ? '' : 'text-slate-700'
+                            showAsBooked ? '' : isEventsOverlay ? 'text-emerald-800/55' : 'text-slate-700'
                           }`}
                         >
-                          <span>{showAsBookedInEvents ? bookedLabel : availability.status.toUpperCase()}</span>
+                          <span>
+                            {isEventsOverlay
+                              ? overlayLabel
+                              : showAsBooked
+                                ? bookedLabel
+                                : availability.status.toUpperCase()}
+                          </span>
                           <span
                             className={`text-[10px] font-semibold ${
-                              showAsBookedInEvents ? 'opacity-90' : 'text-slate-600/90'
+                              showAsBooked
+                                ? 'opacity-90'
+                                : isEventsOverlay
+                                  ? 'text-emerald-800/45'
+                                  : 'text-slate-600/90'
                             }`}
                           >
                             {formatTime(start)} – {formatTime(end)}
                           </span>
-                          {!showAsBookedInEvents && type ? (
+                          {!showAsBooked && !isEventsOverlay && type ? (
                             <span className="w-fit rounded bg-white/75 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
                               {type.name}
                             </span>
@@ -1904,7 +1971,12 @@ const App = () => {
                       calendarMode === 'events' &&
                       !eventItem.isExternal &&
                       hasPermissionForPractitioner(eventItem.practitionerId, 'canEditEvent')
-                    const statusLabel = eventItem.isExternal ? 'External' : 'Confirmed'
+                    const bookingStatus = eventItem.bookingStatus ?? 'confirmed'
+                    const statusLabel = eventItem.isExternal
+                      ? 'External'
+                      : bookingStatus === 'pending'
+                        ? 'Pending'
+                        : 'Confirmed'
                     return (
                       <div
                         key={eventItem.id}
@@ -1949,7 +2021,11 @@ const App = () => {
                           </span>
                           <span
                             className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-                              eventItem.isExternal ? 'bg-slate-500/25 text-slate-700' : 'bg-white/25'
+                              eventItem.isExternal
+                                ? 'bg-slate-500/25 text-slate-700'
+                                : bookingStatus === 'pending'
+                                  ? 'bg-amber-500/90 text-white'
+                                  : 'bg-white/25'
                             }`}
                           >
                             {statusLabel}
@@ -2102,15 +2178,25 @@ const App = () => {
             setActionToast(`Patient profile · ${selectedEvent.patientName}`)
           }}
           onSendFormReminder={() => {
-            setActionToast(`Form reminder sent to ${selectedEvent.patientName}`)
+            const remaining = formsForAppointmentType(selectedEvent.appointmentTypeId)
+              .slice(1)
+              .map((form) => form.name)
+            setActionToast(
+              remaining.length
+                ? `Reminder sent to ${selectedEvent.patientName} — remaining: ${remaining.join(', ')}`
+                : `Form reminder sent to ${selectedEvent.patientName}`,
+            )
           }}
           onEmailPatient={() => {
-            const email = selectedEvent.patientName
-              .trim()
-              .toLowerCase()
-              .replace(/[^a-z]+/g, '.')
-              .replace(/^\.+|\.+$/g, '')
-            setActionToast(`Email drafted to ${email || 'patient'}@email.com`)
+            setActionToast(`Opened patient portal message for ${selectedEvent.patientName}`)
+          }}
+          onApprovePending={() => {
+            if (!hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')) {
+              setActionToast("You don't have permission for this practitioner.")
+              return
+            }
+            void updateEvent(selectedEvent.id, { bookingStatus: 'confirmed' })
+            setActionToast(`Approved ${selectedEvent.patientName}'s booking`)
           }}
           onSaveNotes={(notes) => {
             if (!hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')) {
@@ -2123,6 +2209,35 @@ const App = () => {
           }}
         />
       ) : null}
+
+      {showPublicBookingPage && viewer.role === 'Practitioner' ? (
+        <PublicBookingPage
+          practitionerName={viewer.name}
+          types={visibleTypes}
+          defaultDate={selectedDate}
+          onClose={() => setShowPublicBookingPage(false)}
+          onRequest={(input) => {
+            void createEvent({
+              practitionerId: viewer.id,
+              patientName: input.patientName,
+              appointmentTypeId: input.appointmentTypeId,
+              startTime: input.startTime,
+              endTime: input.endTime,
+              notes: 'Requested from public booking page · pending approval',
+              date: input.date,
+              bookingStatus: 'pending',
+            })
+            selectDate(parseDateInput(input.date))
+            changeView('day')
+            changeMode('events')
+            setShowPublicBookingPage(false)
+            setShowAppointmentTypesPreview(false)
+            setActionToast(`${input.patientName} requested a visit · pending until you or staff approve`)
+          }}
+        />
+      ) : null}
+
+      {showAuditLog ? <AuditLogModal onClose={() => setShowAuditLog(false)} /> : null}
 
       {managingAccessPractitioner ? (
         <Modal
@@ -2387,6 +2502,7 @@ const App = () => {
             repeat: 'none',
             repeatDays: [new Date(selectedAvailability.start).getDay()],
             repeatUntil: toDateInputValue(new Date(selectedAvailability.end)),
+            unlimited: false,
             wholeDay:
               formatTime(new Date(selectedAvailability.start)) === WHOLE_DAY_START &&
               formatTime(new Date(selectedAvailability.end)) === WHOLE_DAY_END,
@@ -2538,7 +2654,7 @@ const AvailabilityModal = ({
 }) => {
   const [form, setForm] = useState<AvailabilityFormState>(initialForm)
   const maxRepeatDate = toDateInputValue(
-    new Date(parseDateInput(form.startDate).getTime() + 90 * 24 * 60 * 60 * 1000),
+    new Date(parseDateInput(form.startDate).getTime() + AVAILABILITY_HORIZON_DAYS * 24 * 60 * 60 * 1000),
   )
   const typeName =
     appointmentTypesForForm.find((type) => type.id === form.appointmentTypeId)?.name ??
@@ -2670,7 +2786,7 @@ const AvailabilityModal = ({
               .map((type) => (
                 <option key={type.id} value={type.id}>
                   {type.name}
-                  {type.scope === 'private' ? ' · Private' : ''}
+                  {type.scope === 'private' ? ' · My type' : ''}
                 </option>
               ))}
           </select>
@@ -2712,15 +2828,35 @@ const AvailabilityModal = ({
             </div>
           </div>
           <label className="mt-4 flex flex-col gap-1 text-sm">
-            Repeat Until (max 90 days)
-            <input
-              type="date"
-              min={form.startDate}
-              max={maxRepeatDate}
-              value={form.repeatUntil}
-              onChange={(event) => setForm((prev) => ({ ...prev, repeatUntil: event.target.value }))}
-              className="rounded-lg border border-slate-200 px-3 py-2"
-            />
+            Repeat Until {form.unlimited ? '(unlimited)' : '(up to 12 months)'}
+            <label className="mb-1 flex items-center gap-2 text-[12px] font-medium text-slate-600">
+              <input
+                type="checkbox"
+                className="size-4 accent-[#0f5f92]"
+                checked={!!form.unlimited}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, unlimited: event.target.checked }))
+                }
+              />
+              No end date
+            </label>
+            {form.unlimited ? (
+              <p className="text-[12px] text-slate-500">This window repeats with no end date.</p>
+            ) : (
+              <>
+                <input
+                  type="date"
+                  min={form.startDate}
+                  max={maxRepeatDate}
+                  value={form.repeatUntil}
+                  onChange={(event) => setForm((prev) => ({ ...prev, repeatUntil: event.target.value }))}
+                  className="rounded-lg border border-slate-200 px-3 py-2"
+                />
+                <span className="text-[11px] font-normal text-slate-400">
+                  Schedule availability up to 12 months ahead, or turn on no end date.
+                </span>
+              </>
+            )}
           </label>
         </>
       ) : null}

@@ -8,6 +8,7 @@ import {
   canAccessAppointmentType,
   currentUser,
   practitioners,
+  AVAILABILITY_HORIZON_DAYS,
   GRID_START_MINUTES,
   SLOT_COUNT,
   SLOT_MINUTES,
@@ -83,8 +84,9 @@ const createInitialEvents = (): CalendarEvent[] => [
     appointmentTypeId: 'initial-visit',
     start: new Date(2026, 6, 28, 14, 0).toISOString(),
     end: new Date(2026, 6, 28, 14, 30).toISOString(),
-    notes: 'New patient evaluation.',
+    notes: 'New patient evaluation — booked from the public scheduling link.',
     location: 'North Clinic',
+    bookingStatus: 'pending',
   },
   {
     id: 'ev-6',
@@ -485,7 +487,7 @@ export const useCalendarState = () => {
     if (end <= start) return
 
     const maxDate = new Date(baseDate)
-    maxDate.setDate(maxDate.getDate() + 90)
+    maxDate.setDate(maxDate.getDate() + (form.unlimited ? 3650 : AVAILABILITY_HORIZON_DAYS))
     const requestedUntil = parseDateInput(form.repeatUntil)
     const repeatUntil = requestedUntil > maxDate ? maxDate : requestedUntil
 
@@ -660,6 +662,7 @@ export const useCalendarState = () => {
       repeat: repeatDays.length > 1 || toDateInputValue(onDate) !== toDateInputValue(rangeEnd) ? 'weekly' : 'none',
       repeatDays: repeatDays.length ? repeatDays : [onDate.getDay()],
       repeatUntil: toDateInputValue(rangeEnd),
+      unlimited: false,
     })
     setContextMenu({ open: false })
     return practitionerId
@@ -675,6 +678,7 @@ export const useCalendarState = () => {
     location?: string
     date?: string
     endDate?: string
+    bookingStatus?: CalendarEvent['bookingStatus']
   }) => {
     const day = input.date ? parseDateInput(input.date) : selectedDate
     const lastDay = input.endDate ? parseDateInput(input.endDate) : day
@@ -704,6 +708,7 @@ export const useCalendarState = () => {
         end: end.toISOString(),
         notes: input.notes,
         location: input.location,
+        bookingStatus: input.bookingStatus ?? 'confirmed',
       }
       setPendingEventIds((prev) => new Set([...prev, event.id]))
       setEvents((prev) => [...prev, event])

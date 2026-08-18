@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { AppointmentType } from '../types'
 import {
   formatTypeBooking,
@@ -8,12 +9,15 @@ import {
 
 type Props = {
   types: AppointmentType[]
-  /** Admin: practice globals only. Practitioner: globals + their private types. */
+  /** Admin: practice globals only. Practitioner: globals + their custom types. */
   mode?: 'admin' | 'practitioner'
   onAddNew: () => void
   onEdit: (type: AppointmentType) => void
   onBack: () => void
   onManageStaffAccess?: () => void
+  publicBookingLink?: string
+  onOpenBookingPage?: () => void
+  onOpenAuditLog?: () => void
 }
 
 export const AppointmentTypesPreview = ({
@@ -23,11 +27,26 @@ export const AppointmentTypesPreview = ({
   onEdit,
   onBack,
   onManageStaffAccess,
+  publicBookingLink,
+  onOpenBookingPage,
+  onOpenAuditLog,
 }: Props) => {
   const listedTypes = types.filter((type) => type.id !== 'busy-external')
   const globalTypes = listedTypes.filter((type) => type.scope === 'global')
   const privateTypes = listedTypes.filter((type) => type.scope === 'private')
   const isPractitioner = mode === 'practitioner'
+  const [copiedLink, setCopiedLink] = useState(false)
+
+  const copyBookingLink = async () => {
+    if (!publicBookingLink) return
+    try {
+      await navigator.clipboard.writeText(publicBookingLink)
+      setCopiedLink(true)
+      window.setTimeout(() => setCopiedLink(false), 1800)
+    } catch {
+      setCopiedLink(false)
+    }
+  }
 
   const renderRows = (rows: AppointmentType[], allowEdit: boolean) =>
     rows.map((type) => (
@@ -38,7 +57,7 @@ export const AppointmentTypesPreview = ({
             <span className="font-semibold text-slate-800">{type.name}</span>
             {type.scope === 'private' ? (
               <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
-                Private
+                My type
               </span>
             ) : isPractitioner ? (
               <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -88,11 +107,51 @@ export const AppointmentTypesPreview = ({
           </h2>
           <p className="mt-0.5 text-[13px] text-slate-500">
             {isPractitioner
-              ? 'Practice types from Admin plus your private types. New types you create stay private — Admin cannot see them.'
+              ? 'Practice types from Admin plus your custom types. Types you create stay on your calendar only — Admin cannot see them.'
               : 'Practice-default types. New types created here are visible across the practice.'}
           </p>
+          {publicBookingLink ? (
+            <div className="mt-3 space-y-2">
+              <div className="flex max-w-[34rem] items-center gap-2">
+                <span className="shrink-0 text-[12px] font-semibold text-slate-500">Booking page</span>
+                <div className="flex min-w-0 flex-1 items-stretch overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                  <p className="min-w-0 flex-1 truncate px-3 py-2 text-[12px] text-slate-600">
+                    {publicBookingLink.replace(/^https:\/\//, '')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void copyBookingLink()}
+                    className="shrink-0 border-l border-slate-200 bg-white px-3 text-[12px] font-semibold text-[#0f5f92] transition hover:bg-[#eef6fb]"
+                  >
+                    {copiedLink ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                {onOpenBookingPage ? (
+                  <button
+                    type="button"
+                    onClick={onOpenBookingPage}
+                    className="h-[38px] shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Open
+                  </button>
+                ) : null}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Patient requests stay pending. GoHighLevel workflow starts when they book (demo).
+              </p>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenAuditLog ? (
+            <button
+              type="button"
+              onClick={onOpenAuditLog}
+              className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              Activity log
+            </button>
+          ) : null}
           {isPractitioner && onManageStaffAccess ? (
             <button
               type="button"
@@ -148,7 +207,7 @@ export const AppointmentTypesPreview = ({
 
             <section>
               <h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-slate-500">
-                Your private types
+                My appointment types
               </h3>
               <div className="overflow-hidden rounded-2xl ring-1 ring-slate-200/90">
                 <table className="w-full min-w-[780px] border-collapse text-left text-[13px]">
@@ -166,7 +225,7 @@ export const AppointmentTypesPreview = ({
                     {privateTypes.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                          No private types yet. Create one to get started.
+                          No custom types yet. Create one to get started.
                         </td>
                       </tr>
                     ) : (

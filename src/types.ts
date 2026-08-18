@@ -52,6 +52,8 @@ export type AppointmentType = {
   maxLimit?: number
 }
 
+export type BookingStatus = 'confirmed' | 'pending'
+
 export type CalendarEvent = {
   id: string
   practitionerId: string
@@ -62,6 +64,8 @@ export type CalendarEvent = {
   notes: string
   location?: string
   isExternal?: boolean
+  /** Practitioner-created = confirmed. Patient-booked (public link) = pending until approved. */
+  bookingStatus?: BookingStatus
 }
 
 export type AvailabilityBlock = {
@@ -104,4 +108,6 @@ export type AvailabilityFormState = {
   repeat: RepeatMode
   repeatDays: number[]
   repeatUntil: string
+  /** When true, weekly repeats are not capped at 12 months. */
+  unlimited?: boolean
 }
