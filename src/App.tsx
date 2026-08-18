@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   accessibleAppointmentTypes,
   availabilityColors,
@@ -87,6 +87,16 @@ const App = () => {
     setViewerId,
   } = useCalendarState()
 
+  const manageablePractitioners = useMemo(
+    () =>
+      practitioners.filter(
+        (practitioner) =>
+          practitioner.role === 'Practitioner' &&
+          (practitioner.staffIds ?? []).includes(viewer.id),
+      ),
+    [viewer.id],
+  )
+
   const [now, setNow] = useState(() => new Date())
   const [activePractitionerForDraft, setActivePractitionerForDraft] = useState<string | null>(null)
   const [dragSelection, setDragSelection] = useState<{
@@ -109,6 +119,16 @@ const App = () => {
     endTime: string
   } | null>(null)
   const [scheduleFocusId, setScheduleFocusId] = useState<string | null>(null)
+  const effectivePractitionerId =
+    viewer.role === 'Practitioner'
+      ? viewer.id
+      : viewer.role === 'Admin'
+        ? scheduleFocusId ?? visiblePractitioners[0]?.id ?? practitioners[0].id
+      : manageablePractitioners.length > 0
+        ? manageablePractitioners.some((p) => p.id === scheduleFocusId)
+          ? scheduleFocusId!
+          : manageablePractitioners[0].id
+        : viewer.id
   const [schedulePreviewId, setSchedulePreviewId] = useState<string | null>(null)
   const [showAppointmentTypesPreview, setShowAppointmentTypesPreview] = useState(false)
   const [showNewAppointmentTypeModal, setShowNewAppointmentTypeModal] = useState(false)
@@ -344,6 +364,31 @@ const App = () => {
     return scopedAvailability.filter((item) => item.practitionerId === focusPractitioner.id)
   }, [viewMode, scopedAvailability, focusPractitioner.id])
 
+  // Show booked event time as busy slots in Availability mode as well.
+  const mirroredAvailabilityFromEvents = useMemo(() => {
+    const eventSource = viewMode === 'week' ? weekScopedEvents : scopedEvents
+    return eventSource.map((eventItem) => ({
+      id: `event-mirror-${eventItem.id}`,
+      practitionerId: eventItem.practitionerId,
+      start: eventItem.start,
+      end: eventItem.end,
+      status: 'busy' as const,
+      appointmentTypeId: eventItem.appointmentTypeId,
+      sourceId: eventItem.id,
+    }))
+  }, [viewMode, weekScopedEvents, scopedEvents])
+  const mirroredAvailabilityIds = useMemo(
+    () => new Set(mirroredAvailabilityFromEvents.map((item) => item.id)),
+    [mirroredAvailabilityFromEvents],
+  )
+  const mirroredEventIdByAvailabilityId = useMemo(
+    () =>
+      new Map(
+        mirroredAvailabilityFromEvents.map((item) => [item.id, item.sourceId ?? ''] as const),
+      ),
+    [mirroredAvailabilityFromEvents],
+  )
+
   const renderedEvents =
     calendarMode === 'events'
       ? viewMode === 'week'
@@ -351,11 +396,17 @@ const App = () => {
         : scopedEvents
       : []
 
+  // Availability stays on the Availability board, and also appears as booked slots in Events.
   const renderedAvailability =
     calendarMode === 'availability'
-      ? viewMode === 'week'
-        ? weekScopedAvailability
-        : scopedAvailability
+      ? [
+          ...(viewMode === 'week' ? weekScopedAvailability : scopedAvailability),
+          ...mirroredAvailabilityFromEvents,
+        ]
+      : calendarMode === 'events'
+        ? viewMode === 'week'
+          ? weekScopedAvailability
+          : scopedAvailability
       : []
 
   const showCurrentLine =
@@ -400,6 +451,8 @@ const App = () => {
     setAppointmentTimeDraft(null)
     setIsEditingEvent(false)
     setDragAction(null)
+    setAvailabilityEditingId(null)
+    setAvailabilityDraft(null)
   }, [calendarMode])
 
   useEffect(() => {
@@ -520,6 +573,44 @@ const App = () => {
     }
     return cells
   }, [selectedDate])
+
+  /* ── Day indicators for mini-calendar (dots + tooltip) ── */
+  const dayIndicators = useMemo(() => {
+    const map = new Map<string, { events: typeof events; availability: typeof allAvailabilityBlocks }>()
+    const key = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+    for (const ev of events) {
+      const k = key(new Date(ev.start))
+      const entry = map.get(k) ?? { events: [], availability: [] }
+      entry.events.push(ev)
+      map.set(k, entry)
+    }
+    for (const ab of allAvailabilityBlocks) {
+      const k = key(new Date(ab.start))
+      const entry = map.get(k) ?? { events: [], availability: [] }
+      entry.availability.push(ab)
+      map.set(k, entry)
+    }
+    return map
+  }, [events, allAvailabilityBlocks])
+
+  const getDayInfo = useCallback(
+    (day: Date) => dayIndicators.get(`${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`),
+    [dayIndicators],
+  )
+
+  /* Tooltip state for mini-calendar hover */
+  const [miniTooltip, setMiniTooltip] = useState<{
+    x: number
+    y: number
+    dateLabel: string
+    eventNames: string[]
+    availabilityNames: string[]
+    extraEvents: number
+    extraAvailability: number
+  } | null>(null)
+
+  const hasTimeOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
+    startA < endB && endA > startB
 
   const segmentClass = (active: boolean) =>
     `h-8 rounded-md px-3 text-[12px] font-semibold transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92] ${
@@ -785,14 +876,57 @@ const App = () => {
                 </span>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-y-1">
-              {miniMonthDays.map((day, idx) =>
-                day ? (
+            <div className="relative grid grid-cols-7 gap-y-1">
+              {miniMonthDays.map((day, idx) => {
+                if (!day) return <span key={`empty-${idx}`} className="size-8" />
+                const info = getDayInfo(day)
+                const hasEvents = info && info.events.length > 0
+                const hasAvail = info && info.availability.length > 0
+                return (
                   <button
                     key={day.toISOString()}
                     type="button"
                     onClick={() => selectDate(day)}
-                    className={`mx-auto flex size-8 items-center justify-center rounded-full text-[12px] font-bold transition ${
+                    onMouseEnter={(e) => {
+                      if (!info) return
+                      const eventNames = info.events
+                        .map((ev) => appointmentTypeCatalog.find((a) => a.id === ev.appointmentTypeId)?.name ?? 'Event')
+                        .slice(0, 3)
+                      const availabilityLabels = Array.from(
+                        new Set(
+                          info.availability.map((ab) => {
+                            const typeName = appointmentTypeCatalog.find((a) => a.id === ab.appointmentTypeId)?.name
+                            if (ab.status === 'available') return typeName ? `Available (${typeName})` : 'Available'
+                            return 'Blocked'
+                          }),
+                        ),
+                      )
+                      const availabilityNames = availabilityLabels.slice(0, 2)
+                      const extraEvents = Math.max(0, info.events.length - eventNames.length)
+                      const extraAvailability = Math.max(0, availabilityLabels.length - availabilityNames.length)
+                      if (eventNames.length || availabilityNames.length) {
+                        const button = e.currentTarget as HTMLButtonElement
+                        const rect = button.getBoundingClientRect()
+                        const sidebar = button.closest('aside')!.getBoundingClientRect()
+                        const tooltipWidth = 220
+                        const sidePadding = 10
+                        const rawX = rect.left - sidebar.left + rect.width / 2
+                        const minX = tooltipWidth / 2 + sidePadding
+                        const maxX = sidebar.width - tooltipWidth / 2 - sidePadding
+                        const clampedX = Math.max(minX, Math.min(maxX, rawX))
+                        setMiniTooltip({
+                          x: clampedX,
+                          y: rect.bottom - sidebar.top + 8,
+                          dateLabel: day.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
+                          eventNames,
+                          availabilityNames,
+                          extraEvents,
+                          extraAvailability,
+                        })
+                      }
+                    }}
+                    onMouseLeave={() => setMiniTooltip(null)}
+                    className={`relative mx-auto flex size-8 items-center justify-center rounded-full text-[12px] font-bold transition ${
                       isSameDay(day, selectedDate)
                         ? 'bg-[#0f5f92] text-white shadow-md'
                         : isSameDay(day, now)
@@ -803,10 +937,40 @@ const App = () => {
                     }`}
                   >
                     {day.getDate()}
+                    {(hasEvents || hasAvail) && (
+                      <span className="absolute bottom-0.5 left-1/2 flex -translate-x-1/2 gap-[2px]">
+                        {hasEvents && <span className="size-[5px] rounded-full bg-blue-500" />}
+                        {hasAvail && <span className="size-[5px] rounded-full bg-emerald-500" />}
+                      </span>
+                    )}
                   </button>
-                ) : (
-                  <span key={`empty-${idx}`} className="size-8" />
-                ),
+                )
+              })}
+              {miniTooltip && (
+                <div
+                  className="pointer-events-none absolute z-50 w-[220px] -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-2 text-[11px] text-slate-700 shadow-[0_10px_28px_rgba(15,23,42,0.16)]"
+                  style={{ left: miniTooltip.x, top: miniTooltip.y }}
+                >
+                  <p className="mb-1 font-semibold text-slate-900">{miniTooltip.dateLabel}</p>
+                  {miniTooltip.eventNames.length > 0 ? (
+                    <div className="mb-1">
+                      <p className="font-medium text-blue-700">Events</p>
+                      <p className="text-slate-700">{miniTooltip.eventNames.join(', ')}</p>
+                      {miniTooltip.extraEvents > 0 ? (
+                        <p className="text-slate-400">+{miniTooltip.extraEvents} more</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {miniTooltip.availabilityNames.length > 0 ? (
+                    <div>
+                      <p className="font-medium text-emerald-700">Availability</p>
+                      <p className="text-slate-700">{miniTooltip.availabilityNames.join(', ')}</p>
+                      {miniTooltip.extraAvailability > 0 ? (
+                        <p className="text-slate-400">+{miniTooltip.extraAvailability} more</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               )}
             </div>
           </div>
@@ -814,8 +978,11 @@ const App = () => {
           <button
             type="button"
             onClick={() => {
-              const practitionerId =
-                scheduleFocusId ?? visiblePractitioners[0]?.id ?? practitioners[0].id
+              if (viewer.role === 'Therapist' && manageablePractitioners.length === 0) {
+                setActionToast('No practitioner has granted you staff access yet.')
+                return
+              }
+              const practitionerId = effectivePractitionerId
               // Prefill around 8:00–9:00 AM
               const eightAmSlot = Math.max(
                 0,
@@ -824,12 +991,12 @@ const App = () => {
               if (calendarMode === 'availability') {
                 openAvailabilityDraft(practitionerId, eightAmSlot, eightAmSlot + 1)
                 setActivePractitionerForDraft(practitionerId)
-                setLockCreatePractitioner(!!scheduleFocusId)
+                setLockCreatePractitioner(!!scheduleFocusId || viewer.role === 'Therapist')
                 setCreateEventKind('availability')
               } else {
                 setCreateEventKind('appointment')
                 setActivePractitionerForDraft(practitionerId)
-                setLockCreatePractitioner(!!scheduleFocusId)
+                setLockCreatePractitioner(!!scheduleFocusId || viewer.role === 'Therapist')
                 setAvailabilityDraft(null)
               }
               setIsCreatingEvent(true)
@@ -1073,10 +1240,41 @@ const App = () => {
                     day && calendarMode === 'events'
                       ? scopedEvents.filter((e) => isSameDay(new Date(e.start), day))
                       : []
-                  const dayAvailability =
-                    day && calendarMode === 'availability'
-                      ? allAvailabilityBlocks.filter((a) => isSameDay(new Date(a.start), day)).length
-                      : 0
+                  const dayAvailabilityBlocks =
+                    day && (calendarMode === 'availability' || calendarMode === 'events')
+                      ? allAvailabilityBlocks.filter((a) => isSameDay(new Date(a.start), day))
+                      : []
+                  const dayAvailability = dayAvailabilityBlocks.length
+                  const monthBookedItems =
+                    calendarMode === 'events'
+                      ? [
+                          ...dayEvents.map((eventItem) => ({
+                            id: eventItem.id,
+                            label: eventItem.isExternal ? 'Busy' : eventItem.patientName,
+                            start: eventItem.start,
+                            color:
+                              appointmentTypeMap.get(eventItem.appointmentTypeId)?.color ?? '#0f5f92',
+                            title: `${eventItem.patientName} · ${appointmentTypeMap.get(eventItem.appointmentTypeId)?.name ?? ''}`,
+                          })),
+                          ...dayAvailabilityBlocks.map((block) => {
+                            const type = appointmentTypeMap.get(block.appointmentTypeId || '')
+                            return {
+                              id: `avail-${block.id}`,
+                              label:
+                                block.status === 'blocked'
+                                  ? 'Blocked'
+                                  : type?.name
+                                    ? `Booked · ${type.name}`
+                                    : 'Booked',
+                              start: block.start,
+                              color: type?.color ?? '#d9e0e6',
+                              title: `${block.status} · ${type?.name ?? 'Availability'}`,
+                            }
+                          }),
+                        ].sort(
+                          (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+                        )
+                      : []
                   return (
                     <button
                       key={`${day?.toISOString() ?? idx}`}
@@ -1103,23 +1301,19 @@ const App = () => {
                             {day.getDate()}
                           </div>
                           <div className="space-y-1">
-                            {dayEvents.slice(0, 3).map((eventItem) => {
-                              const type = appointmentTypeMap.get(eventItem.appointmentTypeId)
-                              return (
-                                <div
-                                  key={eventItem.id}
-                                  className="truncate rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
-                                  style={{ background: type?.color ?? '#0f5f92' }}
-                                  title={`${eventItem.patientName} · ${type?.name ?? ''}`}
-                                >
-                                  {formatTime(new Date(eventItem.start))}{' '}
-                                  {eventItem.isExternal ? 'Busy' : eventItem.patientName}
-                                </div>
-                              )
-                            })}
-                            {dayEvents.length > 3 ? (
+                            {monthBookedItems.slice(0, 3).map((item) => (
+                              <div
+                                key={item.id}
+                                className="truncate rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                                style={{ background: item.color }}
+                                title={item.title}
+                              >
+                                {formatTime(new Date(item.start))} {item.label}
+                              </div>
+                            ))}
+                            {monthBookedItems.length > 3 ? (
                               <p className="text-[10px] font-semibold text-slate-500">
-                                +{dayEvents.length - 3} more
+                                +{monthBookedItems.length - 3} more
                               </p>
                             ) : null}
                             {calendarMode === 'availability' ? (
@@ -1337,7 +1531,9 @@ const App = () => {
                         : item.practitionerId === availability.practitionerId,
                     )
                     if (column < 0) return null
-                    const editable = calendarMode === 'availability'
+                    const isEventMirror = mirroredAvailabilityIds.has(availability.id)
+                    const editable = calendarMode === 'availability' && !isEventMirror
+                    const showAsBookedInEvents = calendarMode === 'events' || isEventMirror
                     const endMinutes = end.getHours() * 60 + end.getMinutes()
                     const exclusiveEndSlot = Math.max(
                       startSlot + 1,
@@ -1346,22 +1542,38 @@ const App = () => {
                     const rowStart = startSlot + 2
                     const rowEnd = exclusiveEndSlot + 2
                     const blockHeight = Math.max((exclusiveEndSlot - startSlot) * rowHeight - 6, 52)
+                    const bookedLabel =
+                      availability.status === 'blocked'
+                        ? 'Blocked'
+                        : type?.name
+                          ? `Booked · ${type.name}`
+                          : 'Booked'
+                    const mirroredEventId = mirroredEventIdByAvailabilityId.get(availability.id)
                     return (
                       <div
                         key={availability.id}
                         className={`pointer-events-auto group relative z-[5] m-1 flex flex-col justify-start gap-0.5 overflow-visible rounded-lg px-2.5 py-1.5 transition-all duration-200 ${
-                          editable ? 'cursor-pointer hover:brightness-[0.98]' : 'pointer-events-none'
+                          editable || showAsBookedInEvents
+                            ? 'cursor-pointer hover:brightness-[0.98]'
+                            : 'pointer-events-none'
                         } ${
                           recentlyCreatedAvailabilityIds.has(availability.id)
                             ? 'animate-[blockIn_.2s_ease-out]'
                             : ''
-                        } ${pendingAvailabilityIds.has(availability.id) ? 'opacity-70' : ''}`}
+                        } ${pendingAvailabilityIds.has(availability.id) ? 'opacity-70' : ''} ${
+                          showAsBookedInEvents
+                            ? 'border border-white/35 shadow-[0_2px_8px_rgba(16,40,70,0.16)]'
+                            : ''
+                        }`}
                         style={{
                           gridColumn: `${column + 2}`,
                           gridRow: `${rowStart} / ${rowEnd}`,
                           alignSelf: 'start',
                           minHeight: blockHeight,
-                          background: availabilityColors[availability.status],
+                          background: showAsBookedInEvents
+                            ? type?.color ?? availabilityColors.blocked
+                            : availabilityColors[availability.status],
+                          color: showAsBookedInEvents ? type?.textColor ?? '#3e5569' : undefined,
                         }}
                         onContextMenu={(event) => {
                           if (!editable) return
@@ -1377,9 +1589,24 @@ const App = () => {
                           })
                         }}
                         onClick={() => {
-                          if (editable) setAvailabilityEditingId(availability.id)
+                          // Availability board: edit. Events board: view-only details.
+                          if (isEventMirror && mirroredEventId) {
+                            setSelectedEventId(mirroredEventId)
+                            return
+                          }
+                          if (editable || showAsBookedInEvents) {
+                            setAvailabilityEditingId(availability.id)
+                          }
                         }}
                         onKeyDown={(event) => {
+                          if (isEventMirror && event.key === 'Enter' && mirroredEventId) {
+                            setSelectedEventId(mirroredEventId)
+                            return
+                          }
+                          if (showAsBookedInEvents && event.key === 'Enter') {
+                            setAvailabilityEditingId(availability.id)
+                            return
+                          }
                           if (!editable) return
                           if (event.key === 'Enter') setAvailabilityEditingId(availability.id)
                           if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -1390,16 +1617,32 @@ const App = () => {
                             })
                           }
                         }}
-                        tabIndex={editable ? 0 : -1}
-                        title={`${availability.status.toUpperCase()} · ${formatTime(start)} - ${formatTime(end)}`}
-                        aria-label={`${availability.status} from ${formatTime(start)} to ${formatTime(end)}`}
+                        tabIndex={editable || showAsBookedInEvents ? 0 : -1}
+                        title={
+                          showAsBookedInEvents
+                            ? `${bookedLabel} · ${formatTime(start)} - ${formatTime(end)}`
+                            : `${availability.status.toUpperCase()} · ${formatTime(start)} - ${formatTime(end)}`
+                        }
+                        aria-label={
+                          showAsBookedInEvents
+                            ? `${bookedLabel} from ${formatTime(start)} to ${formatTime(end)}`
+                            : `${availability.status} from ${formatTime(start)} to ${formatTime(end)}`
+                        }
                       >
-                        <div className="pointer-events-none flex h-full flex-col justify-start gap-0.5 text-[10px] font-bold text-slate-700">
-                          <span>{availability.status.toUpperCase()}</span>
-                          <span className="text-[10px] font-semibold text-slate-600/90">
+                        <div
+                          className={`pointer-events-none flex h-full flex-col justify-start gap-0.5 text-[10px] font-bold ${
+                            showAsBookedInEvents ? '' : 'text-slate-700'
+                          }`}
+                        >
+                          <span>{showAsBookedInEvents ? bookedLabel : availability.status.toUpperCase()}</span>
+                          <span
+                            className={`text-[10px] font-semibold ${
+                              showAsBookedInEvents ? 'opacity-90' : 'text-slate-600/90'
+                            }`}
+                          >
                             {formatTime(start)} – {formatTime(end)}
                           </span>
-                          {type ? (
+                          {!showAsBookedInEvents && type ? (
                             <span className="w-fit rounded bg-white/75 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
                               {type.name}
                             </span>
@@ -1695,10 +1938,7 @@ const App = () => {
             date: appointmentTimeDraft?.date ?? selectedDate,
             endDate: appointmentTimeDraft?.endDate,
             practitionerId:
-              activePractitionerForDraft ??
-              scheduleFocusId ??
-              visiblePractitioners[0]?.id ??
-              practitioners[0].id,
+              activePractitionerForDraft ?? effectivePractitionerId,
             appointmentTypeId:
               visibleTypes.find((type) => type.id !== 'busy-external')?.id ?? 'initial-visit',
             startTime: appointmentTimeDraft?.startTime,
@@ -1708,15 +1948,13 @@ const App = () => {
             availabilityDraft
               ? {
                   startDate: availabilityDraft.startDate,
-                  endDate: availabilityDraft.repeatUntil || availabilityDraft.startDate,
+                  // End date stays empty unless the user sets it — not prefilled.
+                  endDate: '',
                   startTime: availabilityDraft.startTime,
                   endTime: availabilityDraft.endTime,
                   attendees: '',
                   practitionerId:
-                    activePractitionerForDraft ??
-                    scheduleFocusId ??
-                    visiblePractitioners[0]?.id ??
-                    practitioners[0].id,
+                    activePractitionerForDraft ?? effectivePractitionerId,
                   appointmentTypeIds: availabilityDraft.appointmentTypeId
                     ? [availabilityDraft.appointmentTypeId]
                     : ['initial-visit'],
@@ -1727,21 +1965,42 @@ const App = () => {
               : defaultAvailabilityForm({
                   date: selectedDate,
                   practitionerId:
-                    activePractitionerForDraft ??
-                    scheduleFocusId ??
-                    visiblePractitioners[0]?.id ??
-                    practitioners[0].id,
+                    activePractitionerForDraft ?? effectivePractitionerId,
                 })
           }
           onCancel={closeCreatePanel}
           onCreateAppointmentType={(form) => {
-            // Admin: practice-wide only. Doctors: private to themselves (never visible to Admin).
             if (viewer.role === 'Admin') {
               return createGlobalAppointmentType(form)
             }
-            return createAppointmentType(viewer.id, form)
+            const ownerId = viewer.role === 'Practitioner' ? viewer.id : effectivePractitionerId
+            return createAppointmentType(ownerId, form)
           }}
           onCreateAppointment={(form) => {
+            const eventStartDay = parseDateInput(form.startDate)
+            const eventEndDay = parseDateInput(form.endDate || form.startDate)
+            const rangeStart = eventStartDay <= eventEndDay ? eventStartDay : eventEndDay
+            const rangeEnd = eventStartDay <= eventEndDay ? eventEndDay : eventStartDay
+            const dayCursor = new Date(rangeStart)
+            dayCursor.setHours(0, 0, 0, 0)
+            const lastDay = new Date(rangeEnd)
+            lastDay.setHours(0, 0, 0, 0)
+
+            while (dayCursor <= lastDay) {
+              const slotStart = setTimeForDate(dayCursor, form.startTime)
+              const slotEnd = setTimeForDate(dayCursor, form.endTime)
+              const blockedOverlap = allAvailabilityBlocks.some((block) => {
+                if (block.practitionerId !== form.practitionerId) return false
+                if (block.status === 'available') return false
+                return hasTimeOverlap(slotStart, slotEnd, new Date(block.start), new Date(block.end))
+              })
+              if (blockedOverlap) {
+                setActionToast('This slot is blocked/busy in availability. Choose another time.')
+                return
+              }
+              dayCursor.setDate(dayCursor.getDate() + 1)
+            }
+
             const location =
               form.meetingType === 'virtual' ? 'Virtual' : form.location || 'North Clinic'
             const assignedFormNames = formsForAppointmentType(form.appointmentTypeId)
@@ -1775,9 +2034,24 @@ const App = () => {
           }}
           onCreateAvailability={(form) => {
             setActivePractitionerForDraft(form.practitionerId)
-            buildAvailabilityForms(form).forEach(({ practitionerId, payload }) => {
+            const forms = buildAvailabilityForms(form)
+            const conflictCount = forms.reduce((count, { practitionerId, payload }) => {
+              const day = parseDateInput(payload.startDate)
+              const start = setTimeForDate(day, payload.wholeDay ? WHOLE_DAY_START : payload.startTime)
+              const end = setTimeForDate(day, payload.wholeDay ? WHOLE_DAY_END : payload.endTime)
+              const hasEventConflict = events.some((event) => {
+                if (event.practitionerId !== practitionerId) return false
+                return hasTimeOverlap(start, end, new Date(event.start), new Date(event.end))
+              })
+              if (hasEventConflict) return count + 1
               void upsertAvailabilityFromForm(payload, practitionerId)
-            })
+              return count
+            }, 0)
+            if (conflictCount > 0) {
+              setActionToast(
+                `${conflictCount} availability slot${conflictCount > 1 ? 's' : ''} skipped because event is already booked.`,
+              )
+            }
             closeCreatePanel()
           }}
         />
@@ -1785,6 +2059,7 @@ const App = () => {
 
       {selectedAvailability && !isCreatingEvent ? (
         <AvailabilityModal
+          readOnly={calendarMode === 'events'}
           initialForm={{
             startDate: toDateInputValue(new Date(selectedAvailability.start)),
             startTime: formatTime(new Date(selectedAvailability.start)),
@@ -1804,13 +2079,17 @@ const App = () => {
             setAvailabilityEditingId(null)
           }}
           onSave={(form) => handleAvailabilitySave(form, selectedAvailability.id)}
-          onDelete={() => {
-            setPendingDelete({
-              type: 'availability',
-              id: selectedAvailability.id,
-              label: `${selectedAvailability.status} block`,
-            })
-          }}
+          onDelete={
+            calendarMode === 'events'
+              ? undefined
+              : () => {
+                  setPendingDelete({
+                    type: 'availability',
+                    id: selectedAvailability.id,
+                    label: `${selectedAvailability.status} block`,
+                  })
+                }
+          }
         />
       ) : null}
 
@@ -1929,21 +2208,27 @@ const AvailabilityModal = ({
   onCancel,
   onDelete,
   appointmentTypesForForm,
+  readOnly = false,
 }: {
   initialForm: AvailabilityFormState
   onSave: (form: AvailabilityFormState) => void
   onCancel: () => void
   onDelete?: () => void
   appointmentTypesForForm: AppointmentType[]
+  readOnly?: boolean
 }) => {
   const [form, setForm] = useState<AvailabilityFormState>(initialForm)
   const maxRepeatDate = toDateInputValue(
     new Date(parseDateInput(form.startDate).getTime() + 90 * 24 * 60 * 60 * 1000),
   )
+  const typeName =
+    appointmentTypesForForm.find((type) => type.id === form.appointmentTypeId)?.name ??
+    (form.status === 'blocked' ? 'Blocked' : 'Availability')
 
   useEffect(() => setForm(initialForm), [initialForm])
 
   const toggleRepeatDay = (value: number) => {
+    if (readOnly) return
     setForm((prev) => ({
       ...prev,
       repeatDays: prev.repeatDays.includes(value)
@@ -1954,30 +2239,56 @@ const AvailabilityModal = ({
 
   return (
     <Modal
-      title={onDelete ? 'Edit Availability' : 'Create Availability'}
+      title={readOnly ? 'Availability details' : onDelete ? 'Edit Availability' : 'Create Availability'}
       onClose={onCancel}
       footer={
         <div className="flex justify-end gap-2">
-          {onDelete ? (
+          {readOnly ? (
             <button
-              onClick={onDelete}
-              className="h-10 rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-600"
+              onClick={onCancel}
+              className="h-10 rounded-lg bg-[#0f5f92] px-4 text-sm font-semibold text-white"
             >
-              Delete
+              Close
             </button>
-          ) : null}
-          <button onClick={onCancel} className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium">
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave(form)}
-            className="h-10 rounded-lg bg-[#0f5f92] px-4 text-sm font-semibold text-white"
-          >
-            Save
-          </button>
+          ) : (
+            <>
+              {onDelete ? (
+                <button
+                  onClick={onDelete}
+                  className="h-10 rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-600"
+                >
+                  Delete
+                </button>
+              ) : null}
+              <button
+                onClick={onCancel}
+                className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => onSave(form)}
+                className="h-10 rounded-lg bg-[#0f5f92] px-4 text-sm font-semibold text-white"
+              >
+                Save
+              </button>
+            </>
+          )}
         </div>
       }
     >
+      {readOnly ? (
+        <div className="space-y-3 text-sm">
+          <p className="rounded-lg bg-[#f6f9fb] px-3 py-2 text-[12px] font-semibold text-[#0f5f92] ring-1 ring-[#0f5f92]/15">
+            View only from Events — switch to Availability to edit.
+          </p>
+          <Field label="Status" value={form.status === 'blocked' ? 'Blocked' : 'Booked'} />
+          <Field label="Appointment type" value={typeName} />
+          <Field label="Date" value={form.startDate} />
+          <Field label="Time" value={`${form.startTime} – ${form.endTime}`} />
+        </div>
+      ) : (
+        <>
       <div className="grid grid-cols-2 gap-4 text-sm max-[700px]:grid-cols-1">
         <label className="flex flex-col gap-1">
           Start Date
@@ -2094,6 +2405,8 @@ const AvailabilityModal = ({
           </label>
         </>
       ) : null}
+        </>
+      )}
     </Modal>
   )
 }
