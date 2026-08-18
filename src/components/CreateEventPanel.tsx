@@ -671,7 +671,9 @@ export const CreateEventPanel = ({
                       }}
                     >
                       <option value="">Select an option</option>
-                      {practitioners.map((p) => (
+                      {practitioners
+                        .filter((p) => p.role !== 'Staff')
+                        .map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
                         </option>
@@ -1005,7 +1007,9 @@ export const CreateEventPanel = ({
                       }}
                     >
                       <option value="">Select an option</option>
-                      {practitioners.map((p) => (
+                      {practitioners
+                        .filter((p) => p.role !== 'Staff')
+                        .map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
                         </option>

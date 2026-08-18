@@ -12,11 +12,39 @@ export const START_HOUR = Math.floor(GRID_START_MINUTES / 60)
 export const END_HOUR = 23
 
 export const practitioners: Practitioner[] = [
-  { id: 'p1', name: 'Dr. Thomas Reed', role: 'Practitioner', location: 'North Clinic', isCurrentUser: true, staffIds: ['p2', 'p4'] },
-  { id: 'p2', name: 'Mr. Chitraksha Sharma', role: 'Therapist', location: 'West Clinic' },
-  { id: 'p3', name: 'Dr. Om Sharma', role: 'Practitioner', location: 'North Clinic', staffIds: ['p4'] },
+  {
+    id: 'p1',
+    name: 'Dr. Thomas Reed',
+    role: 'Practitioner',
+    location: 'North Clinic',
+    isCurrentUser: true,
+    assignedStaffId: 's1',
+    staffIds: ['s1'],
+    staffAccess: [],
+  },
+  {
+    id: 'p2',
+    name: 'Mr. Chitraksha Sharma',
+    role: 'Therapist',
+    location: 'West Clinic',
+    assignedStaffId: 's2',
+    staffIds: ['s2'],
+    staffAccess: [],
+  },
+  {
+    id: 'p3',
+    name: 'Dr. Om Sharma',
+    role: 'Practitioner',
+    location: 'North Clinic',
+    assignedStaffId: 's3',
+    staffIds: ['s3'],
+    staffAccess: [],
+  },
   { id: 'p4', name: 'Mr. Kapish Sharma', role: 'Therapist', location: 'Virtual' },
   { id: 'p5', name: 'Mr. Madhan Rangaswamy', role: 'Admin', location: 'West Clinic' },
+  { id: 's1', name: 'Abhinav', role: 'Staff', location: 'North Clinic' },
+  { id: 's2', name: 'Mayank', role: 'Staff', location: 'West Clinic' },
+  { id: 's3', name: 'Mayank Sinha', role: 'Staff', location: 'North Clinic' },
 ]
 
 export const currentUser =

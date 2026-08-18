@@ -6,11 +6,22 @@ export type RepeatMode = 'none' | 'weekly'
 export type Practitioner = {
   id: string
   name: string
-  role: 'Practitioner' | 'Therapist' | 'Admin'
+  role: 'Practitioner' | 'Therapist' | 'Admin' | 'Staff'
   location: 'North Clinic' | 'West Clinic' | 'Virtual'
   isCurrentUser?: boolean
   /** IDs of staff members who can manage events/availability on behalf of this practitioner. */
   staffIds?: string[]
+  /** The one staff member assigned to this practitioner. */
+  assignedStaffId?: string
+  staffAccess?: StaffAccessGrant[]
+}
+
+export type StaffAccessGrant = {
+  staffId: string
+  canCreateEvent: boolean
+  canEditEvent: boolean
+  canCreateAvailability: boolean
+  canEditAvailability: boolean
 }
 
 export type TimeUnit = 'min' | 'hours' | 'days'
