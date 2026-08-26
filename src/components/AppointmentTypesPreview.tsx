@@ -158,7 +158,7 @@ export const AppointmentTypesPreview = ({
               onClick={onManageStaffAccess}
               className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-[#0f5f92] shadow-sm transition hover:bg-[#eef6fb]"
             >
-              Manage staff access
+              Permission settings
             </button>
           ) : null}
           <button

@@ -27,7 +27,7 @@ import { CreateEventPanel, buildAvailabilityForms, defaultAppointmentForm, defau
 import { AppointmentTypesPreview } from './components/AppointmentTypesPreview'
 import { NewAppointmentTypeModal } from './components/NewAppointmentTypeModal'
 import { AppNavRail } from './components/AppNavRail'
-import { EventDetailsModal } from './components/EventDetailsModal'
+import { PermissionSettingsPage } from './components/PermissionSettingsPage'
 import { PublicBookingPage } from './components/PublicBookingPage'
 import { AuditLogModal } from './components/AuditLogModal'
 import { ContextMenu } from './components/ContextMenu'
@@ -134,7 +134,7 @@ const App = () => {
   const hasPermissionForPractitioner = useCallback(
     (practitionerId: string, permission: StaffPermissionKey): boolean => {
       if (viewer.role === 'Admin') return true
-      if (viewer.role === 'Practitioner') return viewer.id === practitionerId
+      if (viewer.id === practitionerId) return true
       const grant = getGrantForStaff(practitionerId, viewer.id)
       return !!grant?.[permission]
     },
@@ -146,7 +146,17 @@ const App = () => {
       practitioners.filter((practitioner) => {
         if (practitioner.role === 'Staff') return false
         if (viewer.role === 'Admin') return practitioner.role === 'Practitioner' || !!practitioner.assignedStaffId
-        if (viewer.role === 'Practitioner') return practitioner.id === viewer.id
+        if (viewer.role === 'Practitioner') {
+          if (practitioner.id === viewer.id) return true
+          const grant = getGrantForStaff(practitioner.id, viewer.id)
+          return !!(
+            grant &&
+            (grant.canCreateEvent ||
+              grant.canEditEvent ||
+              grant.canCreateAvailability ||
+              grant.canEditAvailability)
+          )
+        }
         const grant = getGrantForStaff(practitioner.id, viewer.id)
         if (!grant) return false
         return (
@@ -195,6 +205,7 @@ const App = () => {
   const [showAppointmentTypesPreview, setShowAppointmentTypesPreview] = useState(false)
   const [showPublicBookingPage, setShowPublicBookingPage] = useState(false)
   const [showAuditLog, setShowAuditLog] = useState(false)
+  const [showPermissionSettings, setShowPermissionSettings] = useState(false)
   const [showNewAppointmentTypeModal, setShowNewAppointmentTypeModal] = useState(false)
   const [editingAppointmentTypeId, setEditingAppointmentTypeId] = useState<string | null>(null)
   const [actionToast, setActionToast] = useState<string | null>(null)
@@ -643,10 +654,6 @@ const App = () => {
     () => practitioners.filter((member) => member.role === 'Staff'),
     [],
   )
-  const practitionersForAccess = useMemo(
-    () => practitioners.filter((member) => !!member.assignedStaffId),
-    [],
-  )
   const managingAccessPractitioner = useMemo(
     () =>
       managingAccessPractitionerId
@@ -654,27 +661,25 @@ const App = () => {
         : null,
     [managingAccessPractitionerId],
   )
-  const assignedStaffForManager = useMemo(() => {
-    const staffId = managingAccessPractitioner?.assignedStaffId
-    if (!staffId) return null
-    return staffMembers.find((staff) => staff.id === staffId) ?? null
-  }, [managingAccessPractitioner, staffMembers])
 
   const openStaffAccessManager = (practitioner: Practitioner) => {
     const current = staffAccessByPractitioner[practitioner.id] ?? []
     setStaffAccessDraft(current.map((item) => ({ ...item })))
     setManagingAccessPractitionerId(practitioner.id)
+    setShowPermissionSettings(true)
   }
 
   const closeStaffAccessManager = () => {
     setManagingAccessPractitionerId(null)
     setStaffAccessDraft([])
+    setShowPermissionSettings(false)
   }
 
   useEffect(() => {
     if (viewer.role !== 'Practitioner') {
       setManagingAccessPractitionerId(null)
       setStaffAccessDraft([])
+      setShowPermissionSettings(false)
     }
   }, [viewer.role])
 
@@ -701,7 +706,7 @@ const App = () => {
       [managingAccessPractitionerId]: staffAccessDraft,
     }))
     closeStaffAccessManager()
-    setActionToast('Staff access updated')
+    setActionToast('Permission settings saved')
   }
 
   const currentTimeTop = (() => {
@@ -1345,7 +1350,27 @@ const App = () => {
           )}
         </aside>
 
-        {showAppointmentTypesPreview && canConfigureAppointmentTypes ? (
+        {showPermissionSettings && viewer.role === 'Practitioner' ? (
+          <PermissionSettingsPage
+            owner={managingAccessPractitioner ?? viewer}
+            ownerOptions={practitioners.filter(
+              (member) => member.role === 'Practitioner' || member.role === 'Therapist',
+            )}
+            teamMembers={practitioners.filter(
+              (member) =>
+                member.id !== (managingAccessPractitioner ?? viewer).id && member.role !== 'Admin',
+            )}
+            grants={staffAccessDraft}
+            onSelectOwner={(practitionerId) => {
+              const next = practitioners.find((item) => item.id === practitionerId)
+              if (next) openStaffAccessManager(next)
+            }}
+            onToggleMember={toggleStaffMemberInDraft}
+            onTogglePermission={updateDraftPermission}
+            onSave={saveStaffAccess}
+            onBack={closeStaffAccessManager}
+          />
+        ) : showAppointmentTypesPreview && canConfigureAppointmentTypes ? (
           <AppointmentTypesPreview
             types={
               viewer.role === 'Practitioner'
@@ -2238,105 +2263,6 @@ const App = () => {
       ) : null}
 
       {showAuditLog ? <AuditLogModal onClose={() => setShowAuditLog(false)} /> : null}
-
-      {managingAccessPractitioner ? (
-        <Modal
-          title={`Staff Access · ${managingAccessPractitioner.name}`}
-          onClose={closeStaffAccessManager}
-          footer={
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeStaffAccessManager}
-                className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveStaffAccess}
-                className="h-10 rounded-lg bg-[#0f5f92] px-4 text-sm font-semibold text-white hover:brightness-110"
-              >
-                Save access
-              </button>
-            </div>
-          }
-        >
-          <p className="mb-4 text-sm text-slate-600">
-            Pick a practitioner to see their staff, then turn on access so that staff can create and edit only this calendar.
-          </p>
-          <label className="mb-4 block">
-            <span className="mb-1.5 block text-[12px] font-medium text-slate-500">Practitioner</span>
-            <select
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-800 outline-none focus:border-[#0f5f92]/45 focus:ring-2 focus:ring-[#0f5f92]/12"
-              value={managingAccessPractitioner.id}
-              onChange={(event) => {
-                const next = practitioners.find((item) => item.id === event.target.value)
-                if (next) openStaffAccessManager(next)
-              }}
-            >
-              {practitionersForAccess.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {assignedStaffForManager ? (
-            <div className="rounded-xl border border-slate-200 p-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={!!staffAccessDraft.find((item) => item.staffId === assignedStaffForManager.id)}
-                  onChange={() => toggleStaffMemberInDraft(assignedStaffForManager.id)}
-                  className="size-4 accent-[#0f5f92]"
-                />
-                <span className="text-sm font-semibold text-slate-800">{assignedStaffForManager.name}</span>
-                <span className="text-xs text-slate-500">Staff</span>
-              </label>
-              {staffAccessDraft.find((item) => item.staffId === assignedStaffForManager.id) ? (
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-700">
-                  {(
-                    [
-                      ['canCreateEvent', 'Create events'],
-                      ['canEditEvent', 'Edit events'],
-                      ['canCreateAvailability', 'Create availability'],
-                      ['canEditAvailability', 'Edit availability'],
-                    ] as Array<[StaffPermissionKey, string]>
-                  ).map(([permissionKey, label]) => {
-                    const grant = staffAccessDraft.find((item) => item.staffId === assignedStaffForManager.id)
-                    return (
-                      <label key={permissionKey} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5">
-                        <input
-                          type="checkbox"
-                          checked={grant?.[permissionKey] ?? false}
-                          onChange={(event) =>
-                            updateDraftPermission(
-                              assignedStaffForManager.id,
-                              permissionKey,
-                              event.target.checked,
-                            )
-                          }
-                          className="size-3.5 accent-[#0f5f92]"
-                        />
-                        <span>{label}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              ) : (
-                <p className="mt-2 text-[12px] text-slate-500">
-                  Check the box to give {assignedStaffForManager.name} access to this practitioner.
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-slate-500">
-              No staff is assigned to this practitioner.
-            </p>
-          )}
-        </Modal>
-      ) : null}
 
       {actionToast ? (
         <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-lg bg-[#16202b] px-4 py-2.5 text-[12.5px] font-medium text-white shadow-[0_8px_24px_rgba(16,28,40,0.28)]">
