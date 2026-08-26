@@ -1,5 +1,14 @@
+import { useState } from 'react'
 import type { Practitioner, StaffAccessGrant } from '../types'
 import { PractitionerAvatar } from './PractitionerAvatar'
+import { ConfirmDialog } from './ConfirmDialog'
+
+const formatNameList = (names: string[]) => {
+  if (names.length === 0) return ''
+  if (names.length === 1) return names[0]
+  if (names.length === 2) return `${names[0]} and ${names[1]}`
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
+}
 
 type Props = {
   owner: Practitioner
@@ -22,9 +31,21 @@ export const PermissionSettingsPage = ({
   onSave,
   onBack,
 }: Props) => {
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const staff = teamMembers.filter((member) => member.role === 'Staff')
   const clinicians = teamMembers.filter((member) => member.role !== 'Staff')
   const enabledCount = grants.length
+  const grantedNames = teamMembers
+    .filter((member) => grants.some((item) => item.staffId === member.id))
+    .map((member) => member.name)
+
+  const requestSave = () => {
+    if (grantedNames.length === 0) {
+      onSave()
+      return
+    }
+    setConfirmOpen(true)
+  }
 
   const renderMember = (member: Practitioner) => {
     const enabled = grants.some((item) => item.staffId === member.id)
@@ -112,7 +133,7 @@ export const PermissionSettingsPage = ({
         </div>
         <button
           type="button"
-          onClick={onSave}
+          onClick={requestSave}
           className="h-10 rounded-lg bg-[#0f5f92] px-4 text-[13px] font-semibold text-white shadow-[0_2px_8px_rgba(15,95,146,0.2)] transition hover:brightness-110"
         >
           Save permissions
@@ -148,6 +169,20 @@ export const PermissionSettingsPage = ({
           </div>
         </section>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Give full calendar access?"
+        message={`You are giving full access of ${owner.name}'s calendar to ${formatNameList(grantedNames)}. They will be able to create and edit events and availability. Do you want to continue?`}
+        confirmLabel="Yes, continue"
+        cancelLabel="Cancel"
+        tone="primary"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          onSave()
+        }}
+      />
     </div>
   )
 }

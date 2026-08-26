@@ -3,6 +3,8 @@ type Props = {
   title: string
   message: string
   confirmLabel?: string
+  cancelLabel?: string
+  tone?: 'danger' | 'primary'
   onConfirm: () => void
   onCancel: () => void
 }
@@ -12,6 +14,8 @@ export const ConfirmDialog = ({
   title,
   message,
   confirmLabel = 'Yes, delete',
+  cancelLabel = 'Cancel',
+  tone = 'danger',
   onConfirm,
   onCancel,
 }: Props) => {
@@ -38,12 +42,16 @@ export const ConfirmDialog = ({
             onClick={onCancel}
             className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92]"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="h-10 rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600"
+            className={`h-10 rounded-lg px-4 text-sm font-semibold text-white transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+              tone === 'primary'
+                ? 'bg-[#0f5f92] focus-visible:outline-[#0f5f92]'
+                : 'bg-rose-600 focus-visible:outline-rose-600'
+            }`}
           >
             {confirmLabel}
           </button>
