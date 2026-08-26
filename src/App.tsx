@@ -693,17 +693,14 @@ const App = () => {
     })
   }
 
-  const updateDraftPermission = (staffId: string, permission: StaffPermissionKey, checked: boolean) => {
-    setStaffAccessDraft((prev) =>
-      prev.map((item) => (item.staffId === staffId ? { ...item, [permission]: checked } : item)),
-    )
-  }
-
   const saveStaffAccess = () => {
     if (!managingAccessPractitionerId) return
     setStaffAccessByPractitioner((prev) => ({
       ...prev,
-      [managingAccessPractitionerId]: staffAccessDraft,
+      [managingAccessPractitionerId]: staffAccessDraft.map((item) => ({
+        staffId: item.staffId,
+        ...fullAccess,
+      })),
     }))
     closeStaffAccessManager()
     setActionToast('Permission settings saved')
@@ -1366,7 +1363,6 @@ const App = () => {
               if (next) openStaffAccessManager(next)
             }}
             onToggleMember={toggleStaffMemberInDraft}
-            onTogglePermission={updateDraftPermission}
             onSave={saveStaffAccess}
             onBack={closeStaffAccessManager}
           />
