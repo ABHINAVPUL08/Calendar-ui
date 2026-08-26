@@ -1,19 +1,6 @@
 import type { Practitioner, StaffAccessGrant } from '../types'
 import { PractitionerAvatar } from './PractitionerAvatar'
 
-type PermissionKey =
-  | 'canCreateEvent'
-  | 'canEditEvent'
-  | 'canCreateAvailability'
-  | 'canEditAvailability'
-
-const PERMISSIONS: Array<{ key: PermissionKey; label: string; hint: string }> = [
-  { key: 'canCreateEvent', label: 'Create events', hint: 'Book visits on this calendar' },
-  { key: 'canEditEvent', label: 'Edit events', hint: 'Change, approve, or delete visits' },
-  { key: 'canCreateAvailability', label: 'Create availability', hint: 'Add open hours' },
-  { key: 'canEditAvailability', label: 'Edit availability', hint: 'Move, resize, or remove hours' },
-]
-
 type Props = {
   owner: Practitioner
   ownerOptions: Practitioner[]
@@ -21,7 +8,6 @@ type Props = {
   grants: StaffAccessGrant[]
   onSelectOwner: (practitionerId: string) => void
   onToggleMember: (memberId: string) => void
-  onTogglePermission: (memberId: string, permission: PermissionKey, checked: boolean) => void
   onSave: () => void
   onBack: () => void
 }
@@ -33,7 +19,6 @@ export const PermissionSettingsPage = ({
   grants,
   onSelectOwner,
   onToggleMember,
-  onTogglePermission,
   onSave,
   onBack,
 }: Props) => {
@@ -42,8 +27,7 @@ export const PermissionSettingsPage = ({
   const enabledCount = grants.length
 
   const renderMember = (member: Practitioner) => {
-    const grant = grants.find((item) => item.staffId === member.id)
-    const enabled = !!grant
+    const enabled = grants.some((item) => item.staffId === member.id)
     const assigned = owner.assignedStaffId === member.id
 
     return (
@@ -64,6 +48,11 @@ export const PermissionSettingsPage = ({
                     Assigned to this calendar
                   </span>
                 ) : null}
+                {enabled ? (
+                  <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                    Full access
+                  </span>
+                ) : null}
               </div>
               <p className="text-[12px] text-slate-500">
                 {member.role} · {member.location}
@@ -80,34 +69,11 @@ export const PermissionSettingsPage = ({
             Act on my behalf
           </label>
         </div>
-
-        {enabled && grant ? (
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {PERMISSIONS.map((permission) => (
-              <label
-                key={permission.key}
-                className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5"
-              >
-                <input
-                  type="checkbox"
-                  className="mt-0.5 size-4 accent-[#0f5f92]"
-                  checked={grant[permission.key]}
-                  onChange={(event) =>
-                    onTogglePermission(member.id, permission.key, event.target.checked)
-                  }
-                />
-                <span>
-                  <span className="block text-[13px] font-semibold text-slate-800">{permission.label}</span>
-                  <span className="block text-[11px] text-slate-500">{permission.hint}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-3 text-[12px] text-slate-400">
-            Turn this on so {member.name} can work on {owner.name}&apos;s calendar.
-          </p>
-        )}
+        <p className="mt-3 text-[12px] text-slate-400">
+          {enabled
+            ? `${member.name} can create and edit events and availability on ${owner.name}'s calendar.`
+            : `Turn this on so ${member.name} can work on ${owner.name}'s calendar.`}
+        </p>
       </article>
     )
   }
