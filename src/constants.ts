@@ -57,6 +57,52 @@ export const practitioners: Practitioner[] = [
   { id: 's3', name: 'Mayank Sinha', role: 'Staff', location: 'North Clinic' },
 ]
 
+export const demoPatients: Practitioner[] = [
+  {
+    id: 'pt1',
+    name: 'Rosa Marin',
+    role: 'Patient',
+    location: 'North Clinic',
+    primaryPractitionerId: 'p1',
+    patientClass: 'new',
+  },
+  {
+    id: 'pt2',
+    name: 'Devon Wells',
+    role: 'Patient',
+    location: 'North Clinic',
+    primaryPractitionerId: 'p1',
+    patientClass: 'new',
+  },
+  {
+    id: 'pt3',
+    name: 'Priya Shah',
+    role: 'Patient',
+    location: 'West Clinic',
+    primaryPractitionerId: 'p3',
+    patientClass: 'existing',
+  },
+  {
+    id: 'pt4',
+    name: 'Tom Becker',
+    role: 'Patient',
+    location: 'West Clinic',
+    primaryPractitionerId: 'p2',
+    patientClass: 'existing',
+  },
+]
+
+export const patientPersona = demoPatients[0]
+
+export const personas: Practitioner[] = [...practitioners, ...demoPatients]
+
+export const patientOptionLabel = (patient: Practitioner) =>
+  `${patient.name} (${patient.patientClass === 'existing' ? 'existing' : 'new'})`
+
+export const bookablePractitioners = practitioners.filter(
+  (member) => member.role === 'Practitioner' || member.role === 'Therapist',
+)
+
 export const currentUser =
   practitioners.find((item) => item.isCurrentUser) ?? practitioners[0]
 
@@ -103,6 +149,48 @@ export const appointmentTypes: AppointmentType[] = [
     bufferBefore: 0,
     bufferAfter: 0,
   },
+  {
+    id: 'annual-wellness',
+    name: 'Annual Wellness',
+    color: '#2a9d8f',
+    textColor: '#ffffff',
+    scope: 'global',
+    baseDurationMin: 45,
+    patientClass: 'both',
+    modalities: ['in-person', 'telehealth'],
+    noticeWindowHours: 24,
+    bookingWindowDays: 90,
+    bufferBefore: 10,
+    bufferAfter: 10,
+  },
+  {
+    id: 'medication-review',
+    name: 'Medication Review',
+    color: '#3d5a80',
+    textColor: '#ffffff',
+    scope: 'global',
+    baseDurationMin: 20,
+    patientClass: 'existing',
+    modalities: ['telehealth', 'phone'],
+    noticeWindowHours: 6,
+    bookingWindowDays: 45,
+    bufferBefore: 0,
+    bufferAfter: 5,
+  },
+  {
+    id: 'same-day-urgent',
+    name: 'Same-day Urgent',
+    color: '#c44536',
+    textColor: '#ffffff',
+    scope: 'global',
+    baseDurationMin: 15,
+    patientClass: 'both',
+    modalities: ['in-person', 'phone'],
+    noticeWindowHours: 1,
+    bookingWindowDays: 7,
+    bufferBefore: 0,
+    bufferAfter: 5,
+  },
   { id: 'busy-external', name: 'Busy - External', color: '#d9e0e6', textColor: '#3e5569', scope: 'global' },
   {
     id: 'lab-review-private',
@@ -111,6 +199,28 @@ export const appointmentTypes: AppointmentType[] = [
     textColor: '#ffffff',
     scope: 'private',
     ownerPractitionerId: 'p1',
+    baseDurationMin: 30,
+    patientClass: 'existing',
+    modalities: ['in-person', 'telehealth'],
+    noticeWindowHours: 12,
+    bookingWindowDays: 30,
+    bufferBefore: 5,
+    bufferAfter: 5,
+  },
+  {
+    id: 'sports-physical-private',
+    name: 'Sports Physical',
+    color: '#1d6f42',
+    textColor: '#ffffff',
+    scope: 'private',
+    ownerPractitionerId: 'p1',
+    baseDurationMin: 45,
+    patientClass: 'both',
+    modalities: ['in-person'],
+    noticeWindowHours: 24,
+    bookingWindowDays: 60,
+    bufferBefore: 10,
+    bufferAfter: 10,
   },
   {
     id: 'therapy-intake-private',
@@ -119,6 +229,58 @@ export const appointmentTypes: AppointmentType[] = [
     textColor: '#ffffff',
     scope: 'private',
     ownerPractitionerId: 'p2',
+    baseDurationMin: 60,
+    patientClass: 'new',
+    modalities: ['in-person', 'telehealth'],
+    noticeWindowHours: 24,
+    bookingWindowDays: 45,
+    bufferBefore: 10,
+    bufferAfter: 10,
+  },
+  {
+    id: 'counseling-session-private',
+    name: 'Counseling Session',
+    color: '#6b4f2a',
+    textColor: '#ffffff',
+    scope: 'private',
+    ownerPractitionerId: 'p2',
+    baseDurationMin: 50,
+    patientClass: 'existing',
+    modalities: ['in-person', 'telehealth'],
+    noticeWindowHours: 12,
+    bookingWindowDays: 60,
+    bufferBefore: 0,
+    bufferAfter: 10,
+  },
+  {
+    id: 'procedure-consult-private',
+    name: 'Procedure Consult',
+    color: '#264653',
+    textColor: '#ffffff',
+    scope: 'private',
+    ownerPractitionerId: 'p3',
+    baseDurationMin: 40,
+    patientClass: 'both',
+    modalities: ['in-person'],
+    noticeWindowHours: 24,
+    bookingWindowDays: 45,
+    bufferBefore: 10,
+    bufferAfter: 15,
+  },
+  {
+    id: 'therapy-follow-up-private',
+    name: 'Therapy Follow-up',
+    color: '#7a3e5d',
+    textColor: '#ffffff',
+    scope: 'private',
+    ownerPractitionerId: 'p4',
+    baseDurationMin: 45,
+    patientClass: 'existing',
+    modalities: ['telehealth', 'phone'],
+    noticeWindowHours: 12,
+    bookingWindowDays: 60,
+    bufferBefore: 0,
+    bufferAfter: 5,
   },
 ]
 
@@ -189,6 +351,17 @@ export const appointmentTypesForPractitioner = (
     if (type.ownerPractitionerId !== practitionerId) return false
     // Private types stay with the individual doctor — Admin and other doctors never see them.
     return viewer.id === type.ownerPractitionerId
+  })
+
+/** Patient booking: practice-wide types plus that clinician's private types. */
+export const patientVisitTypesForPractitioner = (
+  types: AppointmentType[],
+  practitionerId: string,
+): AppointmentType[] =>
+  types.filter((type) => {
+    if (type.id === 'busy-external') return false
+    if (type.scope === 'global') return true
+    return type.ownerPractitionerId === practitionerId
   })
 
 export const accessibleAppointmentTypes = (
@@ -292,6 +465,35 @@ export const FORMS_BY_APPOINTMENT_TYPE: Record<string, PatientFormTemplate[]> = 
   'therapy-intake-private': [
     { id: 'therapy-intake', name: 'Therapy Intake Questionnaire', defaultStatus: 'Unassigned' },
     { id: 'significant-life', name: 'Significant Life Events', defaultStatus: 'Unassigned' },
+    { id: 'goals-readiness', name: 'Goals, Readiness & Support', defaultStatus: 'Unassigned' },
+  ],
+  'annual-wellness': [
+    { id: 'wellness-screen', name: 'Wellness Screening', defaultStatus: 'Unassigned' },
+    { id: 'lifestyle', name: 'Lifestyle', defaultStatus: 'Unassigned' },
+    { id: 'history', name: 'History', defaultStatus: 'Unassigned' },
+  ],
+  'medication-review': [
+    { id: 'med-list', name: 'Current Medications', defaultStatus: 'Unassigned' },
+    { id: 'symptoms', name: 'Symptoms', defaultStatus: 'Unassigned' },
+  ],
+  'same-day-urgent': [
+    { id: 'urgent-reason', name: 'Reason for Visit', defaultStatus: 'Unassigned' },
+    { id: 'symptoms', name: 'Symptoms', defaultStatus: 'Unassigned' },
+  ],
+  'sports-physical-private': [
+    { id: 'activity-history', name: 'Activity History', defaultStatus: 'Unassigned' },
+    { id: 'injury-screen', name: 'Injury Screen', defaultStatus: 'Unassigned' },
+  ],
+  'counseling-session-private': [
+    { id: 'session-focus', name: 'Session Focus', defaultStatus: 'Unassigned' },
+    { id: 'progress-since-last', name: 'Progress Since Last Visit', defaultStatus: 'Unassigned' },
+  ],
+  'procedure-consult-private': [
+    { id: 'procedure-questions', name: 'Procedure Questions', defaultStatus: 'Unassigned' },
+    { id: 'history', name: 'History', defaultStatus: 'Unassigned' },
+  ],
+  'therapy-follow-up-private': [
+    { id: 'session-focus', name: 'Session Focus', defaultStatus: 'Unassigned' },
     { id: 'goals-readiness', name: 'Goals, Readiness & Support', defaultStatus: 'Unassigned' },
   ],
 }

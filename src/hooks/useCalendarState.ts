@@ -7,6 +7,7 @@ import {
   buildPrivateAppointmentType,
   canAccessAppointmentType,
   currentUser,
+  personas,
   practitioners,
   AVAILABILITY_HORIZON_DAYS,
   GRID_START_MINUTES,
@@ -188,6 +189,63 @@ const createInitialEvents = (): CalendarEvent[] => [
     notes: 'Follow-up later in the week.',
     location: 'West Clinic',
   },
+  {
+    id: 'ev-rosa-pending',
+    practitionerId: 'p1',
+    patientName: 'Rosa Marin',
+    appointmentTypeId: 'initial-visit',
+    start: new Date(2026, 6, 28, 10, 0).toISOString(),
+    end: new Date(2026, 6, 28, 11, 0).toISOString(),
+    notes: 'Requested from patient portal · pending approval',
+    location: 'North Clinic',
+    bookingStatus: 'pending',
+  },
+  {
+    id: 'ev-rosa-approved',
+    practitionerId: 'p1',
+    patientName: 'Rosa Marin',
+    appointmentTypeId: 'follow-up',
+    start: new Date(2026, 6, 27, 9, 0).toISOString(),
+    end: new Date(2026, 6, 27, 9, 30).toISOString(),
+    notes: 'Approved by the practice.',
+    location: 'North Clinic',
+    bookingStatus: 'confirmed',
+    approvedBy: 'Dr. Thomas Reed',
+  },
+  {
+    id: 'ev-devon-pending',
+    practitionerId: 'p1',
+    patientName: 'Devon Wells',
+    appointmentTypeId: 'discovery-call',
+    start: new Date(2026, 6, 29, 11, 0).toISOString(),
+    end: new Date(2026, 6, 29, 11, 30).toISOString(),
+    notes: 'Requested from patient portal · pending approval',
+    location: 'North Clinic',
+    bookingStatus: 'pending',
+  },
+  {
+    id: 'ev-priya-approved',
+    practitionerId: 'p3',
+    patientName: 'Priya Shah',
+    appointmentTypeId: 'follow-up',
+    start: new Date(2026, 6, 28, 13, 0).toISOString(),
+    end: new Date(2026, 6, 28, 13, 30).toISOString(),
+    notes: 'Approved existing-patient visit.',
+    location: 'North Clinic',
+    bookingStatus: 'confirmed',
+    approvedBy: 'Dr. Om Sharma',
+  },
+  {
+    id: 'ev-tom-pending',
+    practitionerId: 'p2',
+    patientName: 'Tom Becker',
+    appointmentTypeId: 'therapy-intake-private',
+    start: new Date(2026, 6, 30, 14, 0).toISOString(),
+    end: new Date(2026, 6, 30, 14, 30).toISOString(),
+    notes: 'Requested from patient portal · pending approval',
+    location: 'West Clinic',
+    bookingStatus: 'pending',
+  },
 ]
 
 const createInitialAvailability = (): AvailabilityBlock[] => [
@@ -291,6 +349,41 @@ const createInitialAvailability = (): AvailabilityBlock[] => [
     end: new Date(2026, 6, 31, 18, 0).toISOString(),
     status: 'available',
   },
+  {
+    id: 'av-14',
+    practitionerId: 'p1',
+    start: new Date(2026, 6, 30, 8, 0).toISOString(),
+    end: new Date(2026, 6, 30, 17, 0).toISOString(),
+    status: 'available',
+  },
+  {
+    id: 'av-15',
+    practitionerId: 'p2',
+    start: new Date(2026, 6, 29, 9, 0).toISOString(),
+    end: new Date(2026, 6, 29, 17, 0).toISOString(),
+    status: 'available',
+  },
+  {
+    id: 'av-16',
+    practitionerId: 'p3',
+    start: new Date(2026, 6, 30, 8, 0).toISOString(),
+    end: new Date(2026, 6, 30, 16, 0).toISOString(),
+    status: 'available',
+  },
+  {
+    id: 'av-17',
+    practitionerId: 'p4',
+    start: new Date(2026, 6, 30, 10, 0).toISOString(),
+    end: new Date(2026, 6, 30, 16, 0).toISOString(),
+    status: 'available',
+  },
+  {
+    id: 'av-18',
+    practitionerId: 'p3',
+    start: new Date(2026, 6, 29, 8, 0).toISOString(),
+    end: new Date(2026, 6, 29, 12, 0).toISOString(),
+    status: 'available',
+  },
 ]
 
 const rollForwardCreated = (
@@ -318,7 +411,7 @@ export const useCalendarState = () => {
   const [viewerId, setViewerId] = useState(currentUser.id)
 
   const viewer = useMemo(
-    () => practitioners.find((item) => item.id === viewerId) ?? currentUser,
+    () => personas.find((item) => item.id === viewerId) ?? currentUser,
     [viewerId],
   )
 
@@ -916,6 +1009,7 @@ export const useCalendarState = () => {
     viewMode,
     selectedDate,
     events: visibleEvents,
+    allEvents: events,
     availabilityBlocks: visibleAvailability,
     allAvailabilityBlocks: availabilityBlocks,
     appointmentTypeCatalog,
