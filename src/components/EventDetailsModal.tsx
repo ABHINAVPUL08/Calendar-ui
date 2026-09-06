@@ -102,10 +102,31 @@ export const EventDetailsModal = ({
     day: 'numeric',
     year: 'numeric',
   })
+  const statusBadge = (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        bookingStatus === 'pending'
+          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+          : bookingStatus === 'rejected'
+            ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+            : bookingStatus === 'cancelled'
+              ? 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+              : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+      }`}
+    >
+      {bookingStatus === 'pending'
+        ? 'Pending'
+        : bookingStatus === 'rejected'
+          ? 'Rejected'
+          : bookingStatus === 'cancelled'
+            ? 'Cancelled'
+            : 'Approved'}
+    </span>
+  )
 
   if (isEditing) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-[3px]">
+      <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-[3px]">
         <div
           className="w-full max-w-[520px] overflow-hidden rounded-2xl bg-white shadow-[0_28px_70px_rgba(16,28,40,0.28)] ring-1 ring-slate-200/80"
           role="dialog"
@@ -202,7 +223,7 @@ export const EventDetailsModal = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[3px]">
+    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[3px]">
       <div
         className="w-full max-w-[520px] overflow-hidden rounded-2xl bg-white shadow-[0_28px_70px_rgba(16,28,40,0.28)] ring-1 ring-slate-200/80"
         role="dialog"
@@ -210,7 +231,7 @@ export const EventDetailsModal = ({
         aria-labelledby="event-details-title"
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
               Appointment
             </p>
@@ -220,20 +241,10 @@ export const EventDetailsModal = ({
             >
               {title}
             </h2>
-            {!event.isExternal ? (
+            {!event.isExternal && !patientView ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <p className="truncate text-[13px] text-slate-500">{event.patientName}</p>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                    bookingStatus === 'pending'
-                      ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                      : bookingStatus === 'rejected'
-                        ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
-                        : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                  }`}
-                >
-                  {bookingStatus === 'pending' ? 'Pending' : bookingStatus === 'rejected' ? 'Rejected' : 'Approved'}
-                </span>
+                {statusBadge}
                 {bookingStatus === 'pending' ? (
                   <span className="text-[12px] text-slate-400">
                     Practitioner or assigned staff can approve
@@ -242,14 +253,19 @@ export const EventDetailsModal = ({
               </div>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid size-9 shrink-0 place-items-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+          <div className="flex shrink-0 items-start gap-2">
+            {patientView && !event.isExternal ? (
+              <div className="mt-1">{statusBadge}</div>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid size-9 shrink-0 place-items-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="max-h-[min(70vh,640px)] overflow-y-auto px-5 py-4">

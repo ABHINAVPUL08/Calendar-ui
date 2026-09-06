@@ -55,7 +55,7 @@ export type AppointmentType = {
   maxLimit?: number
 }
 
-export type BookingStatus = 'confirmed' | 'pending' | 'rejected'
+export type BookingStatus = 'confirmed' | 'pending' | 'rejected' | 'cancelled'
 
 export type CalendarEvent = {
   id: string

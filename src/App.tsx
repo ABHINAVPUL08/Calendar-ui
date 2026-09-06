@@ -1512,19 +1512,7 @@ const App = () => {
           )}
         </aside>
 
-        {isPatientViewer && patientPane === 'appointments' ? (
-          <PatientAppointmentsPage
-            appointments={myPatientAppointments}
-            types={appointmentTypeCatalog}
-            patientName={viewer.name}
-            onBack={() => setPatientPane('home')}
-            onSchedule={() => setPatientPane('book')}
-            onOpenVisit={(eventItem) => {
-              setSelectedEventId(eventItem.id)
-            }}
-            onCancelVisit={(id, label) => setPendingDelete({ type: 'event', id, label })}
-          />
-        ) : showRequests && !isPatientViewer ? (
+        {showRequests && !isPatientViewer ? (
           <PractitionerRequestsPage
             requests={pendingRequests}
             types={appointmentTypeCatalog}
@@ -1625,9 +1613,7 @@ const App = () => {
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 {isPatientViewer
-                  ? patientPane === 'appointments'
-                    ? 'My appointments'
-                    : 'Your schedule'
+                  ? 'Your schedule'
                   : scheduleFocusId
                     ? `${focusPractitioner.name}'s day`
                     : calendarMode === 'events'
@@ -1654,7 +1640,7 @@ const App = () => {
                   Show all team
                 </button>
               ) : null}
-              {calendarMode === 'availability' ? (
+              {isPatientViewer ? null : calendarMode === 'availability' ? (
                 <span className="rounded-md bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
                   Availability editor
                 </span>
@@ -1695,7 +1681,14 @@ const App = () => {
                               appointmentTypeMap.get(eventItem.appointmentTypeId)?.name ?? 'Visit'
                             const pending = eventItem.bookingStatus === 'pending'
                             const rejected = eventItem.bookingStatus === 'rejected'
-                            const statusWord = pending ? 'Pending' : rejected ? 'Rejected' : 'Approved'
+                            const cancelled = eventItem.bookingStatus === 'cancelled'
+                            const statusWord = pending
+                              ? 'Pending'
+                              : rejected
+                                ? 'Rejected'
+                                : cancelled
+                                  ? 'Cancelled'
+                                  : 'Approved'
                             return {
                               id: eventItem.id,
                               label: isPatientViewer
@@ -1706,13 +1699,17 @@ const App = () => {
                                     ? `Pending · ${eventItem.patientName}`
                                     : rejected
                                       ? `Rejected · ${eventItem.patientName}`
-                                      : eventItem.patientName,
+                                      : cancelled
+                                        ? `Cancelled · ${eventItem.patientName}`
+                                        : eventItem.patientName,
                               start: eventItem.start,
                               color: pending
                                 ? '#d97706'
                                 : rejected
                                   ? '#e11d48'
-                                  : appointmentTypeMap.get(eventItem.appointmentTypeId)?.color ?? '#0f5f92',
+                                  : cancelled
+                                    ? '#64748b'
+                                    : appointmentTypeMap.get(eventItem.appointmentTypeId)?.color ?? '#0f5f92',
                               title: isPatientViewer
                                 ? `${typeName} · ${statusWord}`
                                 : `${eventItem.patientName} · ${typeName}`,
@@ -2265,7 +2262,9 @@ const App = () => {
                         ? 'Pending'
                         : bookingStatus === 'rejected'
                           ? 'Rejected'
-                          : 'Confirmed'
+                          : bookingStatus === 'cancelled'
+                            ? 'Cancelled'
+                            : 'Confirmed'
                     return (
                       <div
                         key={eventItem.id}
@@ -2279,7 +2278,7 @@ const App = () => {
                           gridRow: `${rowStart} / ${rowEnd}`,
                           alignSelf: 'start',
                           minHeight: blockHeight,
-                          background: type.color,
+                          background: bookingStatus === 'cancelled' ? '#64748b' : type.color,
                           color: type.textColor,
                         }}
                         onMouseDown={(mouseEvent) => {
@@ -2320,7 +2319,9 @@ const App = () => {
                                   ? 'bg-amber-500/90 text-white'
                                   : bookingStatus === 'rejected'
                                     ? 'bg-rose-500/90 text-white'
-                                    : 'bg-emerald-500/90 text-white'
+                                    : bookingStatus === 'cancelled'
+                                      ? 'bg-slate-500/90 text-white'
+                                      : 'bg-emerald-500/90 text-white'
                             }`}
                           >
                             {isPatientViewer
@@ -2328,7 +2329,9 @@ const App = () => {
                                 ? 'Pending'
                                 : bookingStatus === 'rejected'
                                   ? 'Rejected'
-                                  : 'Approved'
+                                  : bookingStatus === 'cancelled'
+                                    ? 'Cancelled'
+                                    : 'Approved'
                               : statusLabel}
                           </span>
                         </div>
@@ -2566,6 +2569,22 @@ const App = () => {
         <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-lg bg-[#16202b] px-4 py-2.5 text-[12.5px] font-medium text-white shadow-[0_8px_24px_rgba(16,28,40,0.28)]">
           {actionToast}
         </div>
+      ) : null}
+
+      {isPatientViewer && patientPane === 'appointments' ? (
+        <PatientAppointmentsPage
+          appointments={myPatientAppointments}
+          types={appointmentTypeCatalog}
+          onClose={() => setPatientPane('home')}
+          onSchedule={() => setPatientPane('book')}
+          onOpenVisit={(eventItem) => {
+            setSelectedEventId(eventItem.id)
+          }}
+          onCancelVisit={(id) => {
+            void updateEvent(id, { bookingStatus: 'cancelled' })
+            setActionToast('Appointment cancelled')
+          }}
+        />
       ) : null}
 
       {isPatientViewer && patientPane === 'book' ? (
