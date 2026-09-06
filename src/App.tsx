@@ -1512,42 +1512,7 @@ const App = () => {
           )}
         </aside>
 
-        {isPatientViewer && patientPane === 'book' ? (
-            <PatientBookingFlow
-              key={`book-${viewer.id}`}
-              patient={viewer}
-              types={appointmentTypeCatalog}
-              events={allEvents}
-              availability={allAvailabilityBlocks}
-              selectedDate={selectedDate}
-              onSelectDate={selectDate}
-              onCancel={() => setPatientPane('home')}
-              onSend={(input) => {
-                const howNote =
-                  input.mode === 'in-person'
-                    ? `In-person${input.location ? ` · ${input.location}` : ''}`
-                    : input.mode === 'telehealth'
-                      ? 'Telehealth'
-                      : 'Phone'
-                void createEvent({
-                  practitionerId: input.practitionerId,
-                  patientName: viewer.name,
-                  appointmentTypeId: input.appointmentTypeId,
-                  startTime: input.startTime,
-                  endTime: input.endTime,
-                  notes: `Requested from patient portal · ${howNote} · pending approval`,
-                  date: input.date,
-                  location: input.location,
-                  bookingStatus: 'pending',
-                })
-                selectDate(parseDateInput(input.date))
-                setPatientPane('appointments')
-                changeView('day')
-                changeMode('events')
-                setActionToast('Request sent · pending until the practice confirms')
-              }}
-            />
-        ) : isPatientViewer && patientPane === 'appointments' ? (
+        {isPatientViewer && patientPane === 'appointments' ? (
           <PatientAppointmentsPage
             appointments={myPatientAppointments}
             types={appointmentTypeCatalog}
@@ -1555,10 +1520,6 @@ const App = () => {
             onBack={() => setPatientPane('home')}
             onSchedule={() => setPatientPane('book')}
             onOpenVisit={(eventItem) => {
-              selectDate(new Date(eventItem.start))
-              changeView('day')
-              changeMode('events')
-              setPatientPane('home')
               setSelectedEventId(eventItem.id)
             }}
             onCancelVisit={(id, label) => setPendingDelete({ type: 'event', id, label })}
@@ -1582,13 +1543,10 @@ const App = () => {
               })
               setActionToast(`Approved ${eventItem.patientName}'s request`)
             }}
-            onDecline={(eventItem) =>
-              setPendingDelete({
-                type: 'event',
-                id: eventItem.id,
-                label: `${eventItem.patientName}'s request`,
-              })
-            }
+            onDecline={(eventItem) => {
+              void updateEvent(eventItem.id, { bookingStatus: 'rejected' })
+              setActionToast(`Rejected ${eventItem.patientName}'s request`)
+            }}
           />
         ) : showPermissionSettings && viewer.role === 'Practitioner' ? (
           <PermissionSettingsPage
@@ -1736,21 +1694,27 @@ const App = () => {
                             const typeName =
                               appointmentTypeMap.get(eventItem.appointmentTypeId)?.name ?? 'Visit'
                             const pending = eventItem.bookingStatus === 'pending'
+                            const rejected = eventItem.bookingStatus === 'rejected'
+                            const statusWord = pending ? 'Pending' : rejected ? 'Rejected' : 'Approved'
                             return {
                               id: eventItem.id,
                               label: isPatientViewer
-                                ? `${pending ? 'Pending' : 'Approved'} · ${typeName}`
+                                ? `${statusWord} · ${typeName}`
                                 : eventItem.isExternal
                                   ? 'Busy'
                                   : pending
                                     ? `Pending · ${eventItem.patientName}`
-                                    : eventItem.patientName,
+                                    : rejected
+                                      ? `Rejected · ${eventItem.patientName}`
+                                      : eventItem.patientName,
                               start: eventItem.start,
                               color: pending
                                 ? '#d97706'
-                                : appointmentTypeMap.get(eventItem.appointmentTypeId)?.color ?? '#0f5f92',
+                                : rejected
+                                  ? '#e11d48'
+                                  : appointmentTypeMap.get(eventItem.appointmentTypeId)?.color ?? '#0f5f92',
                               title: isPatientViewer
-                                ? `${typeName} · ${pending ? 'Pending' : 'Approved'}`
+                                ? `${typeName} · ${statusWord}`
                                 : `${eventItem.patientName} · ${typeName}`,
                             }
                           })
@@ -2299,7 +2263,9 @@ const App = () => {
                       ? 'External'
                       : bookingStatus === 'pending'
                         ? 'Pending'
-                        : 'Confirmed'
+                        : bookingStatus === 'rejected'
+                          ? 'Rejected'
+                          : 'Confirmed'
                     return (
                       <div
                         key={eventItem.id}
@@ -2352,13 +2318,17 @@ const App = () => {
                                 ? 'bg-slate-500/25 text-slate-700'
                                 : bookingStatus === 'pending'
                                   ? 'bg-amber-500/90 text-white'
-                                  : 'bg-emerald-500/90 text-white'
+                                  : bookingStatus === 'rejected'
+                                    ? 'bg-rose-500/90 text-white'
+                                    : 'bg-emerald-500/90 text-white'
                             }`}
                           >
                             {isPatientViewer
                               ? bookingStatus === 'pending'
                                 ? 'Pending'
-                                : 'Approved'
+                                : bookingStatus === 'rejected'
+                                  ? 'Rejected'
+                                  : 'Approved'
                               : statusLabel}
                           </span>
                         </div>
@@ -2505,6 +2475,7 @@ const App = () => {
             if (viewMode !== 'day') changeView('day')
             if (!isPatientViewer) setScheduleFocusId(selectedEvent.practitionerId)
             setSelectedEventId(null)
+            if (isPatientViewer) setPatientPane('home')
             setActionToast(`Opened visit day for ${selectedEvent.patientName}`)
           }}
           onGoToPatientProfile={() => {
@@ -2536,6 +2507,18 @@ const App = () => {
                     approvedBy: viewer.name,
                   })
                   setActionToast(`Approved ${selectedEvent.patientName}'s booking`)
+                }
+          }
+          onRejectPending={
+            isPatientViewer
+              ? undefined
+              : () => {
+                  if (!hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')) {
+                    setActionToast("You don't have permission for this practitioner.")
+                    return
+                  }
+                  void updateEvent(selectedEvent.id, { bookingStatus: 'rejected' })
+                  setActionToast(`Rejected ${selectedEvent.patientName}'s booking`)
                 }
           }
           onSaveNotes={(notes) => {
@@ -2583,6 +2566,43 @@ const App = () => {
         <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-lg bg-[#16202b] px-4 py-2.5 text-[12.5px] font-medium text-white shadow-[0_8px_24px_rgba(16,28,40,0.28)]">
           {actionToast}
         </div>
+      ) : null}
+
+      {isPatientViewer && patientPane === 'book' ? (
+        <PatientBookingFlow
+          key={`book-${viewer.id}`}
+          patient={viewer}
+          types={appointmentTypeCatalog}
+          events={allEvents}
+          availability={allAvailabilityBlocks}
+          selectedDate={selectedDate}
+          onSelectDate={selectDate}
+          onCancel={() => setPatientPane('home')}
+          onSend={(input) => {
+            const howNote =
+              input.mode === 'in-person'
+                ? `In-person${input.location ? ` · ${input.location}` : ''}`
+                : input.mode === 'telehealth'
+                  ? 'Telehealth'
+                  : 'Phone'
+            void createEvent({
+              practitionerId: input.practitionerId,
+              patientName: viewer.name,
+              appointmentTypeId: input.appointmentTypeId,
+              startTime: input.startTime,
+              endTime: input.endTime,
+              notes: `Requested from patient portal · ${howNote} · pending approval`,
+              date: input.date,
+              location: input.location,
+              bookingStatus: 'pending',
+            })
+            selectDate(parseDateInput(input.date))
+            setPatientPane('home')
+            changeView('day')
+            changeMode('events')
+            setActionToast('Request sent · pending until the practice confirms')
+          }}
+        />
       ) : null}
 
       {isCreatingEvent && !isPatientViewer ? (
