@@ -126,7 +126,8 @@ export const PatientAppointmentsPage = ({
             <div className="space-y-3">
               {appointments.map((eventItem) => {
                 const type = types.find((item) => item.id === eventItem.appointmentTypeId)
-                const pending = (eventItem.bookingStatus ?? 'confirmed') === 'pending'
+                const pending = eventItem.bookingStatus === 'pending'
+                const rejected = eventItem.bookingStatus === 'rejected'
                 const clinician = practitioners.find((item) => item.id === eventItem.practitionerId)
                 const start = new Date(eventItem.start)
                 const mode = visitMode(eventItem)
@@ -152,10 +153,12 @@ export const PatientAppointmentsPage = ({
                           className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
                             pending
                               ? 'bg-amber-100 text-amber-800'
-                              : 'bg-emerald-100 text-emerald-800'
+                              : rejected
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {pending ? 'Pending' : 'Approved'}
+                          {pending ? 'Pending' : rejected ? 'Rejected' : 'Approved'}
                         </span>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-slate-600">

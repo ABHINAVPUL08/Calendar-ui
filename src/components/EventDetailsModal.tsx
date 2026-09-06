@@ -33,6 +33,7 @@ type Props = {
   onEmailPatient: () => void
   onSaveNotes: (notes: string) => void
   onApprovePending?: () => void
+  onRejectPending?: () => void
 }
 
 const actionBtnClass =
@@ -66,6 +67,7 @@ export const EventDetailsModal = ({
   onEmailPatient,
   onSaveNotes,
   onApprovePending,
+  onRejectPending,
   patientView = false,
 }: Props) => {
   const [notesDraft, setNotesDraft] = useState(event.notes)
@@ -85,6 +87,20 @@ export const EventDetailsModal = ({
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+  })
+  const bookingStatus = event.bookingStatus ?? 'confirmed'
+  const visitHow = (() => {
+    const notes = event.notes.toLowerCase()
+    if (notes.includes('telehealth')) return 'Telehealth'
+    if (notes.includes('phone')) return 'Phone'
+    if (event.location === 'Virtual') return 'Telehealth'
+    return 'In-person'
+  })()
+  const dateTimeLabel = start.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
   })
 
   if (isEditing) {
@@ -209,14 +225,16 @@ export const EventDetailsModal = ({
                 <p className="truncate text-[13px] text-slate-500">{event.patientName}</p>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                    event.bookingStatus === 'pending'
+                    bookingStatus === 'pending'
                       ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                      : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                      : bookingStatus === 'rejected'
+                        ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                        : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
                   }`}
                 >
-                  {event.bookingStatus === 'pending' ? 'Pending' : 'Approved'}
+                  {bookingStatus === 'pending' ? 'Pending' : bookingStatus === 'rejected' ? 'Rejected' : 'Approved'}
                 </span>
-                {event.bookingStatus === 'pending' ? (
+                {bookingStatus === 'pending' ? (
                   <span className="text-[12px] text-slate-400">
                     Practitioner or assigned staff can approve
                   </span>
@@ -236,6 +254,52 @@ export const EventDetailsModal = ({
 
         <div className="max-h-[min(70vh,640px)] overflow-y-auto px-5 py-4">
           <div className="space-y-4">
+            {patientView ? (
+              <div className={infoCardClass}>
+                <dl className="space-y-3">
+                  <div>
+                    <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Visit type</dt>
+                    <dd className="mt-0.5 text-[14px] font-semibold text-slate-800">{title}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Practitioner</dt>
+                    <dd className="mt-0.5 text-[14px] font-semibold text-slate-800">
+                      {practitioner?.name ?? '—'}
+                    </dd>
+                    {practitioner ? (
+                      <p className="text-[12px] text-slate-500">
+                        {practitioner.role} · {practitioner.location}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Date & time</dt>
+                    <dd className="mt-0.5 text-[14px] font-semibold text-slate-800">
+                      {dateTimeLabel}, {timeRange}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Mode</dt>
+                    <dd className="mt-0.5 text-[14px] font-semibold text-slate-800">{visitHow}</dd>
+                  </div>
+                  {event.location ? (
+                    <div>
+                      <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Location</dt>
+                      <dd className="mt-0.5 text-[14px] font-semibold text-slate-800">{event.location}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                <button
+                  type="button"
+                  onClick={onGoToVisit}
+                  className="mt-3 inline-flex items-center gap-1 text-[12px] font-semibold text-[#0f5f92]"
+                >
+                  Click here to open on calendar
+                  <span aria-hidden>→</span>
+                </button>
+              </div>
+            ) : (
+            <>
             <div className={`flex gap-3 ${infoCardClass}`}>
               <span
                 className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-[#e8f3f9] text-[#0f5f92] ring-1 ring-[#0f5f92]/15"
@@ -272,37 +336,6 @@ export const EventDetailsModal = ({
                 ) : null}
               </div>
             </div>
-
-            {event.bookingStatus !== 'pending' && !event.isExternal ? (
-              <div className={`flex gap-3 ${infoCardClass}`}>
-                <span
-                  className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80"
-                  aria-hidden
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                    Approved by
-                  </p>
-                  <p className="mt-0.5 text-[14px] font-semibold text-slate-800">
-                    {event.approvedBy || practitioner?.name || 'Practice'}
-                  </p>
-                  <p className="text-[12px] text-slate-500">This visit is confirmed.</p>
-                </div>
-              </div>
-            ) : null}
 
             <button
               type="button"
@@ -344,9 +377,6 @@ export const EventDetailsModal = ({
                 </p>
               </div>
             </button>
-
-            {patientView ? null : (
-            <>
             <div className={infoCardClass}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white text-[14px] text-[#0f5f92] ring-1 ring-slate-200/80">
@@ -426,6 +456,16 @@ export const EventDetailsModal = ({
                     disabled={!canModify}
                   >
                     Approve booking
+                  </button>
+                ) : null}
+                {event.bookingStatus === 'pending' && onRejectPending ? (
+                  <button
+                    type="button"
+                    className={`${actionBtnClass} border-rose-200 text-rose-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 hover:shadow-[0_10px_22px_rgba(225,29,72,0.16)]`}
+                    onClick={onRejectPending}
+                    disabled={!canModify}
+                  >
+                    Reject booking
                   </button>
                 ) : null}
                 <button
