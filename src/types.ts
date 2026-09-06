@@ -6,7 +6,7 @@ export type RepeatMode = 'none' | 'weekly'
 export type Practitioner = {
   id: string
   name: string
-  role: 'Practitioner' | 'Therapist' | 'Admin' | 'Staff'
+  role: 'Practitioner' | 'Therapist' | 'Admin' | 'Staff' | 'Patient'
   location: 'North Clinic' | 'West Clinic' | 'Virtual'
   isCurrentUser?: boolean
   /** IDs of staff members who can manage events/availability on behalf of this practitioner. */
@@ -14,6 +14,9 @@ export type Practitioner = {
   /** The one staff member assigned to this practitioner. */
   assignedStaffId?: string
   staffAccess?: StaffAccessGrant[]
+  /** Patient personas only — used to badge the assigned clinician in booking. */
+  primaryPractitionerId?: string
+  patientClass?: 'new' | 'existing'
 }
 
 export type StaffAccessGrant = {
@@ -66,6 +69,8 @@ export type CalendarEvent = {
   isExternal?: boolean
   /** Practitioner-created = confirmed. Patient-booked (public link) = pending until approved. */
   bookingStatus?: BookingStatus
+  /** Name of the staff/practitioner who approved a patient request. */
+  approvedBy?: string
 }
 
 export type AvailabilityBlock = {

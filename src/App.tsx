@@ -7,6 +7,8 @@ import {
   formsForAppointmentType,
   GRID_START_MINUTES,
   practitioners,
+  demoPatients,
+  patientOptionLabel,
   SLOT_COUNT,
   SLOT_MINUTES,
   WHOLE_DAY_END,
@@ -29,6 +31,10 @@ import { NewAppointmentTypeModal } from './components/NewAppointmentTypeModal'
 import { AppNavRail } from './components/AppNavRail'
 import { PermissionSettingsPage } from './components/PermissionSettingsPage'
 import { PublicBookingPage } from './components/PublicBookingPage'
+import { PatientBookingFlow } from './components/PatientBookingFlow'
+import { PatientAppointmentsPage } from './components/PatientAppointmentsPage'
+import { PractitionerRequestsPage } from './components/PractitionerRequestsPage'
+import { EventDetailsModal } from './components/EventDetailsModal'
 import { AuditLogModal } from './components/AuditLogModal'
 import { ContextMenu } from './components/ContextMenu'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -71,6 +77,7 @@ const App = () => {
     viewMode,
     selectedDate,
     events,
+    allEvents,
     availabilityBlocks,
     allAvailabilityBlocks,
     appointmentTypeCatalog,
@@ -133,6 +140,7 @@ const App = () => {
 
   const hasPermissionForPractitioner = useCallback(
     (practitionerId: string, permission: StaffPermissionKey): boolean => {
+      if (viewer.role === 'Patient') return false
       if (viewer.role === 'Admin') return true
       if (viewer.id === practitionerId) return true
       const grant = getGrantForStaff(practitionerId, viewer.id)
@@ -202,7 +210,10 @@ const App = () => {
           : manageablePractitioners[0].id
         : viewer.id
   const [schedulePreviewId, setSchedulePreviewId] = useState<string | null>(null)
+  const [patientPane, setPatientPane] = useState<'home' | 'book' | 'appointments'>('home')
+  const isPatientViewer = viewer.role === 'Patient'
   const [showAppointmentTypesPreview, setShowAppointmentTypesPreview] = useState(false)
+  const [showRequests, setShowRequests] = useState(false)
   const [showPublicBookingPage, setShowPublicBookingPage] = useState(false)
   const [showAuditLog, setShowAuditLog] = useState(false)
   const [showPermissionSettings, setShowPermissionSettings] = useState(false)
@@ -256,6 +267,7 @@ const App = () => {
   }
 
   const beginSlotDrag = (practitionerId: string, slotIndex: number, dateKey: string) => {
+    if (viewer.role === 'Patient') return
     const requiredPermission =
       calendarMode === 'availability' ? 'canCreateAvailability' : 'canCreateEvent'
     if (!hasPermissionForPractitioner(practitionerId, requiredPermission)) {
@@ -356,25 +368,54 @@ const App = () => {
   }, [selectedDate, viewMode])
 
   const scopedEvents = useMemo(
-    () =>
-      events.filter((event) => {
+    () => {
+      const source = isPatientViewer
+        ? allEvents.filter((event) => event.patientName === viewer.name && !event.isExternal)
+        : events
+      return source.filter((event) => {
         const start = new Date(event.start)
         if (start < visibleRange.start || start > visibleRange.end) return false
         if (viewMode === 'day' && !isSameDay(start, selectedDate)) return false
         return true
-      }),
-    [events, visibleRange, viewMode, selectedDate],
+      })
+    },
+    [allEvents, events, isPatientViewer, selectedDate, viewMode, viewer.name, visibleRange],
   )
 
   const scopedAvailability = useMemo(
-    () =>
-      availabilityBlocks.filter((item) => {
+    () => {
+      if (isPatientViewer) return []
+      return availabilityBlocks.filter((item) => {
         const start = new Date(item.start)
         if (start < visibleRange.start || start > visibleRange.end) return false
         if (viewMode === 'day' && !isSameDay(start, selectedDate)) return false
         return true
-      }),
-    [availabilityBlocks, visibleRange, viewMode, selectedDate],
+      })
+    },
+    [availabilityBlocks, isPatientViewer, selectedDate, viewMode, visibleRange],
+  )
+
+  const myPatientAppointments = useMemo(
+    () =>
+      allEvents
+        .filter((event) => event.patientName === viewer.name && !event.isExternal)
+        .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()),
+    [allEvents, viewer.name],
+  )
+
+  const pendingRequests = useMemo(
+    () =>
+      allEvents
+        .filter((event) => event.bookingStatus === 'pending' && !event.isExternal)
+        .filter((event) => {
+          if (viewer.role === 'Admin') return true
+          if (viewer.role === 'Practitioner' || viewer.role === 'Therapist') {
+            return event.practitionerId === viewer.id
+          }
+          return manageablePractitioners.some((member) => member.id === event.practitionerId)
+        })
+        .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()),
+    [allEvents, manageablePractitioners, viewer.id, viewer.role],
   )
 
   const weekDays = useMemo(() => {
@@ -410,12 +451,22 @@ const App = () => {
   }, [visiblePractitioners, scheduleFocusId])
 
   const gridColumns = useMemo(() => {
-    if (viewMode === 'week') {
+    if (isPatientViewer || viewMode === 'week') {
+      if (isPatientViewer && viewMode === 'day') {
+        return [
+          {
+            kind: 'day' as const,
+            id: toDateInputValue(selectedDate),
+            date: selectedDate,
+            practitionerId: viewer.id,
+          },
+        ]
+      }
       return weekDays.map((date) => ({
         kind: 'day' as const,
         id: toDateInputValue(date),
         date,
-        practitionerId: focusPractitioner.id,
+        practitionerId: isPatientViewer ? viewer.id : focusPractitioner.id,
       }))
     }
     return dayPractitioners.map((practitioner) => ({
@@ -425,7 +476,7 @@ const App = () => {
       practitionerId: practitioner.id,
       practitioner,
     }))
-  }, [viewMode, weekDays, dayPractitioners, focusPractitioner.id, selectedDate])
+  }, [dayPractitioners, focusPractitioner.id, isPatientViewer, selectedDate, viewMode, viewer.id, weekDays])
 
   const schedulePreviewPractitioner = useMemo(
     () =>
@@ -437,8 +488,9 @@ const App = () => {
 
   const weekScopedEvents = useMemo(() => {
     if (viewMode !== 'week') return scopedEvents
+    if (isPatientViewer) return scopedEvents
     return scopedEvents.filter((event) => event.practitionerId === focusPractitioner.id)
-  }, [viewMode, scopedEvents, focusPractitioner.id])
+  }, [focusPractitioner.id, isPatientViewer, scopedEvents, viewMode])
 
   const weekScopedAvailability = useMemo(() => {
     if (viewMode !== 'week') return scopedAvailability
@@ -683,6 +735,21 @@ const App = () => {
     }
   }, [viewer.role])
 
+  useEffect(() => {
+    if (viewer.role !== 'Patient') {
+      setPatientPane('home')
+      return
+    }
+    setShowAppointmentTypesPreview(false)
+    setShowNewAppointmentTypeModal(false)
+    setShowPermissionSettings(false)
+    setShowRequests(false)
+    setIsCreatingEvent(false)
+    setScheduleFocusId(null)
+    setSchedulePreviewId(null)
+    changeMode('events')
+  }, [viewer.role])
+
   const toggleStaffMemberInDraft = (staffId: string) => {
     setStaffAccessDraft((prev) => {
       const existing = prev.find((item) => item.staffId === staffId)
@@ -738,20 +805,25 @@ const App = () => {
   const dayIndicators = useMemo(() => {
     const map = new Map<string, { events: typeof events; availability: typeof allAvailabilityBlocks }>()
     const key = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
-    for (const ev of events) {
+    const sourceEvents = isPatientViewer
+      ? allEvents.filter((ev) => ev.patientName === viewer.name)
+      : events
+    for (const ev of sourceEvents) {
       const k = key(new Date(ev.start))
       const entry = map.get(k) ?? { events: [], availability: [] }
       entry.events.push(ev)
       map.set(k, entry)
     }
-    for (const ab of allAvailabilityBlocks) {
-      const k = key(new Date(ab.start))
-      const entry = map.get(k) ?? { events: [], availability: [] }
-      entry.availability.push(ab)
-      map.set(k, entry)
+    if (!isPatientViewer) {
+      for (const ab of allAvailabilityBlocks) {
+        const k = key(new Date(ab.start))
+        const entry = map.get(k) ?? { events: [], availability: [] }
+        entry.availability.push(ab)
+        map.set(k, entry)
+      }
     }
     return map
-  }, [events, allAvailabilityBlocks])
+  }, [allAvailabilityBlocks, allEvents, events, isPatientViewer, viewer.name])
 
   const getDayInfo = useCallback(
     (day: Date) => dayIndicators.get(`${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`),
@@ -786,14 +858,18 @@ const App = () => {
       <header className="z-50 shrink-0 border-b border-slate-200/70 bg-white/95 backdrop-blur-md">
         <div className="flex h-[48px] items-center gap-2.5 px-3 min-[1440px]:px-4">
           <div className="min-w-0 flex-1 pl-0.5">
-            <h1 className="truncate text-[16px] font-bold tracking-tight text-slate-900 min-[1440px]:text-[17px]">
-              {viewMode === 'day' ? dateTitle : shortDateTitle}
-            </h1>
-            <p className="text-[10px] font-medium tracking-wide text-slate-400">Timezone · GMT-4</p>
+            {isPatientViewer ? null : (
+              <>
+                <h1 className="truncate text-[16px] font-bold tracking-tight text-slate-900 min-[1440px]:text-[17px]">
+                  {viewMode === 'day' ? dateTitle : shortDateTitle}
+                </h1>
+                <p className="text-[10px] font-medium tracking-wide text-slate-400">Timezone · GMT-4</p>
+              </>
+            )}
           </div>
 
           <div className="hidden items-center gap-1.5 lg:flex">
-            {canConfigureAppointmentTypes ? (
+            {isPatientViewer ? null : canConfigureAppointmentTypes ? (
               <button
                 type="button"
                 onClick={() => setShowAppointmentTypesPreview(true)}
@@ -821,6 +897,7 @@ const App = () => {
                 </svg>
               </button>
             ) : null}
+            {isPatientViewer ? null : (
             <div
               className="items-center rounded-lg bg-slate-100/90 p-0.5 lg:grid lg:grid-cols-2 lg:flex-none"
               role="group"
@@ -840,9 +917,10 @@ const App = () => {
                 aria-pressed={calendarMode === 'availability'}
                 className={`${segmentClass(calendarMode === 'availability')} min-w-[7rem]`}
               >
-                Availability
-              </button>
+              Availability
+            </button>
             </div>
+            )}
           </div>
 
           <div className="hidden items-center gap-1.5 md:flex">
@@ -898,13 +976,18 @@ const App = () => {
           >
             {(
               [
+                { id: 'pt1', label: 'Patient' },
                 { id: 'p5', label: 'Admin' },
                 { id: 'p1', label: 'Practitioner' },
                 { id: 's1', label: 'Staff' },
               ] as const
             ).map((persona) => {
               const active =
-                persona.label === 'Staff' ? viewer.role === 'Staff' : viewer.id === persona.id
+                persona.label === 'Staff'
+                  ? viewer.role === 'Staff'
+                  : persona.label === 'Patient'
+                    ? viewer.role === 'Patient'
+                    : viewer.id === persona.id
               return (
                 <button
                   key={persona.id}
@@ -912,11 +995,12 @@ const App = () => {
                     onClick={() => {
                     setViewerId(persona.id)
                     // Close practice-type manager when leaving Admin; practitioners manage private types separately.
-                    if (persona.label === 'Staff') {
+                    if (persona.label === 'Staff' || persona.label === 'Patient') {
                       setShowAppointmentTypesPreview(false)
                       setShowNewAppointmentTypeModal(false)
                       setEditingAppointmentTypeId(null)
                     }
+                    if (persona.label === 'Patient') setPatientPane('home')
                   }}
                   aria-pressed={active}
                   className={`h-9 rounded-lg px-3 text-[12px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f5f92] ${
@@ -946,6 +1030,7 @@ const App = () => {
           </div>
         </div>
 
+        {isPatientViewer ? null : (
         <div className="flex gap-2 border-t border-slate-100 px-3 py-1.5 lg:hidden">
           {canConfigureAppointmentTypes ? (
             <button
@@ -1018,6 +1103,7 @@ const App = () => {
             </button>
           </div>
         </div>
+        )}
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[248px_minmax(0,1fr)] min-[1440px]:grid-cols-[260px_minmax(0,1fr)]">
@@ -1150,6 +1236,58 @@ const App = () => {
             </div>
           </div>
 
+          {isPatientViewer ? (
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() => setPatientPane('book')}
+                className={`h-10 rounded-lg text-[13px] font-semibold transition ${
+                  patientPane === 'book'
+                    ? 'bg-[#0f5f92] text-white shadow-[0_4px_12px_rgba(15,95,146,0.22)]'
+                    : 'bg-[#eef6fb] text-[#0f5f92] ring-1 ring-[#0f5f92]/15 hover:bg-[#e2f0f8]'
+                }`}
+              >
+                Book appointment
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPatientPane('appointments')
+                  changeMode('events')
+                }}
+                className={`h-10 rounded-lg text-[13px] font-semibold transition ${
+                  patientPane === 'appointments'
+                    ? 'bg-[#0f5f92] text-white shadow-[0_4px_12px_rgba(15,95,146,0.22)]'
+                    : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                My appointments
+              </button>
+              <label className="block">
+                <span className="mb-1.5 block px-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  Patient
+                </span>
+                <select
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] font-semibold text-slate-800 outline-none focus:border-[#0f5f92]/50 focus:ring-2 focus:ring-[#0f5f92]/15"
+                  value={viewer.id}
+                  aria-label="Choose patient"
+                  onChange={(event) => {
+                    setViewerId(event.target.value)
+                    setPatientPane((prev) => (prev === 'book' ? 'home' : prev))
+                  }}
+                >
+                  {demoPatients.map((patient) => (
+                    <option key={patient.id} value={patient.id}>
+                      {patientOptionLabel(patient)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          {isPatientViewer ? null : (
+          <>
           <button
             type="button"
             onClick={() => {
@@ -1186,6 +1324,31 @@ const App = () => {
             aria-label={calendarMode === 'availability' ? 'Create availability' : 'Create event'}
           >
             {calendarMode === 'availability' ? 'Create Availability' : 'Create Event'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowRequests(true)
+              setShowAppointmentTypesPreview(false)
+              setShowPermissionSettings(false)
+            }}
+            className={`flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg text-[13px] font-semibold transition ${
+              showRequests
+                ? 'bg-[#0f5f92] text-white shadow-[0_4px_12px_rgba(15,95,146,0.22)]'
+                : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Requests
+            {pendingRequests.length > 0 ? (
+              <span
+                className={`grid min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-bold ${
+                  showRequests ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {pendingRequests.length}
+              </span>
+            ) : null}
           </button>
 
           <div className="flex flex-col gap-2.5">
@@ -1345,9 +1508,89 @@ const App = () => {
               </div>
             </div>
           )}
+          </>
+          )}
         </aside>
 
-        {showPermissionSettings && viewer.role === 'Practitioner' ? (
+        {isPatientViewer && patientPane === 'book' ? (
+            <PatientBookingFlow
+              key={`book-${viewer.id}`}
+              patient={viewer}
+              types={appointmentTypeCatalog}
+              events={allEvents}
+              availability={allAvailabilityBlocks}
+              selectedDate={selectedDate}
+              onSelectDate={selectDate}
+              onCancel={() => setPatientPane('home')}
+              onSend={(input) => {
+                const howNote =
+                  input.mode === 'in-person'
+                    ? `In-person${input.location ? ` · ${input.location}` : ''}`
+                    : input.mode === 'telehealth'
+                      ? 'Telehealth'
+                      : 'Phone'
+                void createEvent({
+                  practitionerId: input.practitionerId,
+                  patientName: viewer.name,
+                  appointmentTypeId: input.appointmentTypeId,
+                  startTime: input.startTime,
+                  endTime: input.endTime,
+                  notes: `Requested from patient portal · ${howNote} · pending approval`,
+                  date: input.date,
+                  location: input.location,
+                  bookingStatus: 'pending',
+                })
+                selectDate(parseDateInput(input.date))
+                setPatientPane('appointments')
+                changeView('day')
+                changeMode('events')
+                setActionToast('Request sent · pending until the practice confirms')
+              }}
+            />
+        ) : isPatientViewer && patientPane === 'appointments' ? (
+          <PatientAppointmentsPage
+            appointments={myPatientAppointments}
+            types={appointmentTypeCatalog}
+            patientName={viewer.name}
+            onBack={() => setPatientPane('home')}
+            onSchedule={() => setPatientPane('book')}
+            onOpenVisit={(eventItem) => {
+              selectDate(new Date(eventItem.start))
+              changeView('day')
+              changeMode('events')
+              setPatientPane('home')
+              setSelectedEventId(eventItem.id)
+            }}
+            onCancelVisit={(id, label) => setPendingDelete({ type: 'event', id, label })}
+          />
+        ) : showRequests && !isPatientViewer ? (
+          <PractitionerRequestsPage
+            requests={pendingRequests}
+            types={appointmentTypeCatalog}
+            onBack={() => setShowRequests(false)}
+            onOpenVisit={(eventItem) => {
+              selectDate(new Date(eventItem.start))
+              changeView('day')
+              changeMode('events')
+              setShowRequests(false)
+              setSelectedEventId(eventItem.id)
+            }}
+            onApprove={(eventItem) => {
+              void updateEvent(eventItem.id, {
+                bookingStatus: 'confirmed',
+                approvedBy: viewer.name,
+              })
+              setActionToast(`Approved ${eventItem.patientName}'s request`)
+            }}
+            onDecline={(eventItem) =>
+              setPendingDelete({
+                type: 'event',
+                id: eventItem.id,
+                label: `${eventItem.patientName}'s request`,
+              })
+            }
+          />
+        ) : showPermissionSettings && viewer.role === 'Practitioner' ? (
           <PermissionSettingsPage
             owner={managingAccessPractitioner ?? viewer}
             ownerOptions={practitioners.filter(
@@ -1423,22 +1666,28 @@ const App = () => {
           >
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                {scheduleFocusId
-                  ? `${focusPractitioner.name}'s day`
-                  : calendarMode === 'events'
-                    ? 'Schedule'
-                    : 'Set availability'}
+                {isPatientViewer
+                  ? patientPane === 'appointments'
+                    ? 'My appointments'
+                    : 'Your schedule'
+                  : scheduleFocusId
+                    ? `${focusPractitioner.name}'s day`
+                    : calendarMode === 'events'
+                      ? 'Schedule'
+                      : 'Set availability'}
               </p>
               <p className="text-[12px] text-slate-600">
-                {scheduleFocusId
-                  ? 'Full-day free, busy, blocked, and booked times for this staff member'
-                  : calendarMode === 'events'
-                    ? 'Appointments sit on top. Light green behind them is open availability.'
-                    : 'Paint open hours, busy, and blocked blocks — click and drag to create'}
+                {isPatientViewer
+                  ? 'Your visits only — tap a block to see if the practice approved it or if it is still pending.'
+                  : scheduleFocusId
+                    ? 'Full-day free, busy, blocked, and booked times for this staff member'
+                    : calendarMode === 'events'
+                      ? 'Appointments sit on top. Light green behind them is open availability.'
+                      : 'Paint open hours, busy, and blocked blocks — click and drag to create'}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {scheduleFocusId ? (
+              {scheduleFocusId && !isPatientViewer ? (
                 <button
                   type="button"
                   onClick={() => setScheduleFocusId(null)}
@@ -1475,7 +1724,7 @@ const App = () => {
                       ? scopedEvents.filter((e) => isSameDay(new Date(e.start), day))
                       : []
                   const dayAvailabilityBlocks =
-                    day && (calendarMode === 'availability' || calendarMode === 'events')
+                    day && !isPatientViewer && (calendarMode === 'availability' || calendarMode === 'events')
                       ? allAvailabilityBlocks.filter((a) => isSameDay(new Date(a.start), day))
                       : []
                   const dayAvailability = dayAvailabilityBlocks.length
@@ -1483,20 +1732,28 @@ const App = () => {
                   const monthBookedItems =
                     calendarMode === 'events'
                       ? dayEvents
-                          .map((eventItem) => ({
-                            id: eventItem.id,
-                            label: eventItem.isExternal
-                              ? 'Busy'
-                              : eventItem.bookingStatus === 'pending'
-                                ? `Pending · ${eventItem.patientName}`
-                                : eventItem.patientName,
-                            start: eventItem.start,
-                            color:
-                              eventItem.bookingStatus === 'pending'
+                          .map((eventItem) => {
+                            const typeName =
+                              appointmentTypeMap.get(eventItem.appointmentTypeId)?.name ?? 'Visit'
+                            const pending = eventItem.bookingStatus === 'pending'
+                            return {
+                              id: eventItem.id,
+                              label: isPatientViewer
+                                ? `${pending ? 'Pending' : 'Approved'} · ${typeName}`
+                                : eventItem.isExternal
+                                  ? 'Busy'
+                                  : pending
+                                    ? `Pending · ${eventItem.patientName}`
+                                    : eventItem.patientName,
+                              start: eventItem.start,
+                              color: pending
                                 ? '#d97706'
                                 : appointmentTypeMap.get(eventItem.appointmentTypeId)?.color ?? '#0f5f92',
-                            title: `${eventItem.patientName} · ${appointmentTypeMap.get(eventItem.appointmentTypeId)?.name ?? ''}`,
-                          }))
+                              title: isPatientViewer
+                                ? `${typeName} · ${pending ? 'Pending' : 'Approved'}`
+                                : `${eventItem.patientName} · ${typeName}`,
+                            }
+                          })
                           .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
                       : []
                   return (
@@ -1561,7 +1818,7 @@ const App = () => {
               key={`${viewMode}-${calendarMode}`}
               className="relative min-h-0 flex-1 animate-[viewFade_.22s_ease-out] overflow-auto scroll-smooth"
             >
-              {viewMode === 'week' ? (
+              {viewMode === 'week' && !isPatientViewer ? (
                 <div className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600">
                   <span>
                     Week for {focusPractitioner.name} · {focusPractitioner.role} ·{' '}
@@ -1596,7 +1853,7 @@ const App = () => {
               >
                 <div
                   className={`sticky left-0 z-40 flex items-end justify-end border-b border-r border-slate-200 bg-white px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 shadow-[0_1px_0_rgba(15,23,42,0.06)] ${
-                    viewMode === 'week' ? 'top-8' : 'top-0'
+                    viewMode === 'week' && !isPatientViewer ? 'top-8' : 'top-0'
                   }`}
                   style={{ height: headerRowHeight }}
                 >
@@ -1604,23 +1861,63 @@ const App = () => {
                 </div>
                 {gridColumns.map((column) => {
                   if (column.kind === 'day') {
+                    const showDayNav = viewMode === 'day'
                     return (
-                      <button
+                      <div
                         key={column.id}
-                        type="button"
-                        onClick={() => selectDate(column.date)}
-                        className={`sticky z-30 flex flex-col items-center justify-center gap-0.5 border-b border-r border-slate-200 bg-white px-2.5 text-center shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-slate-50 ${
-                          viewMode === 'week' ? 'top-8' : 'top-0'
+                        className={`sticky z-30 flex items-center justify-center gap-2 border-b border-r border-slate-200 bg-white px-2 text-center shadow-[0_1px_0_rgba(15,23,42,0.06)] ${
+                          viewMode === 'week' && !isPatientViewer ? 'top-8' : 'top-0'
                         } ${
                           isSameDay(column.date, selectedDate) ? 'ring-1 ring-inset ring-[#0f5f92]/30' : ''
                         }`}
                         style={{ height: headerRowHeight }}
                       >
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                          {column.date.toLocaleDateString([], { weekday: 'short' })}
-                        </p>
-                        <p className="text-[15px] font-bold text-slate-800">{column.date.getDate()}</p>
-                      </button>
+                        {showDayNav ? (
+                          <button
+                            type="button"
+                            onClick={() => shiftDate(-1)}
+                            className="grid size-7 shrink-0 place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                            title="Previous day"
+                            aria-label="Previous day"
+                          >
+                            ‹
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => selectDate(column.date)}
+                          className="flex min-w-0 flex-col items-center justify-center gap-0.5"
+                        >
+                          {showDayNav && isPatientViewer ? (
+                            <p className="truncate text-[14px] font-bold tracking-tight text-slate-900">
+                              {column.date.toLocaleDateString([], {
+                                weekday: 'long',
+                                month: 'long',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </p>
+                          ) : (
+                            <>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                {column.date.toLocaleDateString([], { weekday: 'short' })}
+                              </p>
+                              <p className="text-[15px] font-bold text-slate-800">{column.date.getDate()}</p>
+                            </>
+                          )}
+                        </button>
+                        {showDayNav ? (
+                          <button
+                            type="button"
+                            onClick={() => shiftDate(1)}
+                            className="grid size-7 shrink-0 place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                            title="Next day"
+                            aria-label="Next day"
+                          >
+                            ›
+                          </button>
+                        ) : null}
+                      </div>
                     )
                   }
                   const p = column.practitioner
@@ -1652,7 +1949,7 @@ const App = () => {
                       }}
                       title={`Create ${calendarMode === 'availability' ? 'availability' : 'event'} for ${p.name}`}
                       className={`sticky z-30 flex items-center gap-2 border-b border-r border-slate-200 bg-white px-2.5 text-left shadow-[0_1px_0_rgba(15,23,42,0.06)] transition hover:bg-[#eef6fb] ${
-                        viewMode === 'week' ? 'top-8' : 'top-0'
+                        viewMode === 'week' && !isPatientViewer ? 'top-8' : 'top-0'
                       }`}
                       style={{ height: headerRowHeight }}
                     >
@@ -1698,12 +1995,15 @@ const App = () => {
                         <button
                           key={`${column.id}-${slotIndex}`}
                           type="button"
-                          className={`relative cursor-pointer border-b border-r border-slate-200/90 transition-colors duration-150 ${
-                            isSelected
-                              ? calendarMode === 'availability'
-                                ? 'bg-emerald-100/90 ring-1 ring-inset ring-emerald-300/70'
-                                : 'bg-[#d7ebf8]'
-                              : 'hover:bg-[#dceef8]'
+                          disabled={isPatientViewer}
+                          className={`relative border-b border-r border-slate-200/90 transition-colors duration-150 ${
+                            isPatientViewer
+                              ? 'cursor-default'
+                              : isSelected
+                                ? calendarMode === 'availability'
+                                  ? 'bg-emerald-100/90 ring-1 ring-inset ring-emerald-300/70'
+                                  : 'bg-[#d7ebf8]'
+                                : 'cursor-pointer hover:bg-[#dceef8]'
                           }`}
                           style={{ height: rowHeight }}
                           onMouseDown={(event) => {
@@ -1735,9 +2035,11 @@ const App = () => {
                             })
                           }}
                           title={
-                            calendarMode === 'availability'
-                              ? 'Click and drag across days to set availability'
-                              : 'Click and drag across days to create event'
+                            isPatientViewer
+                              ? undefined
+                              : calendarMode === 'availability'
+                                ? 'Click and drag across days to set availability'
+                                : 'Click and drag across days to create event'
                           }
                           aria-label={`${column.kind === 'day' ? column.date.toDateString() : column.practitioner.name} at ${slotIndexToLabel(slotIndex)}`}
                         />
@@ -2038,7 +2340,11 @@ const App = () => {
                       >
                         <div className="pointer-events-none flex min-w-0 items-start justify-between gap-1">
                           <span className="truncate text-[13px] font-bold leading-tight">
-                            {eventItem.isExternal ? 'Busy — External' : eventItem.patientName}
+                            {isPatientViewer
+                              ? type.name
+                              : eventItem.isExternal
+                                ? 'Busy — External'
+                                : eventItem.patientName}
                           </span>
                           <span
                             className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
@@ -2046,10 +2352,14 @@ const App = () => {
                                 ? 'bg-slate-500/25 text-slate-700'
                                 : bookingStatus === 'pending'
                                   ? 'bg-amber-500/90 text-white'
-                                  : 'bg-white/25'
+                                  : 'bg-emerald-500/90 text-white'
                             }`}
                           >
-                            {statusLabel}
+                            {isPatientViewer
+                              ? bookingStatus === 'pending'
+                                ? 'Pending'
+                                : 'Approved'
+                              : statusLabel}
                           </span>
                         </div>
                         <span className="pointer-events-none truncate text-[11px] font-semibold leading-tight opacity-95">
@@ -2150,8 +2460,10 @@ const App = () => {
           canModify={
             calendarMode === 'events' &&
             !selectedEvent.isExternal &&
+            !isPatientViewer &&
             hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')
           }
+          patientView={isPatientViewer}
           onClose={() => {
             setSelectedEventId(null)
             setIsEditingEvent(false)
@@ -2191,7 +2503,7 @@ const App = () => {
             const visitDate = new Date(selectedEvent.start)
             selectDate(visitDate)
             if (viewMode !== 'day') changeView('day')
-            setScheduleFocusId(selectedEvent.practitionerId)
+            if (!isPatientViewer) setScheduleFocusId(selectedEvent.practitionerId)
             setSelectedEventId(null)
             setActionToast(`Opened visit day for ${selectedEvent.patientName}`)
           }}
@@ -2211,14 +2523,21 @@ const App = () => {
           onEmailPatient={() => {
             setActionToast(`Opened patient portal message for ${selectedEvent.patientName}`)
           }}
-          onApprovePending={() => {
-            if (!hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')) {
-              setActionToast("You don't have permission for this practitioner.")
-              return
-            }
-            void updateEvent(selectedEvent.id, { bookingStatus: 'confirmed' })
-            setActionToast(`Approved ${selectedEvent.patientName}'s booking`)
-          }}
+          onApprovePending={
+            isPatientViewer
+              ? undefined
+              : () => {
+                  if (!hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')) {
+                    setActionToast("You don't have permission for this practitioner.")
+                    return
+                  }
+                  void updateEvent(selectedEvent.id, {
+                    bookingStatus: 'confirmed',
+                    approvedBy: viewer.name,
+                  })
+                  setActionToast(`Approved ${selectedEvent.patientName}'s booking`)
+                }
+          }
           onSaveNotes={(notes) => {
             if (!hasPermissionForPractitioner(selectedEvent.practitionerId, 'canEditEvent')) {
               setActionToast("You don't have permission for this practitioner.")
@@ -2266,7 +2585,7 @@ const App = () => {
         </div>
       ) : null}
 
-      {isCreatingEvent ? (
+      {isCreatingEvent && !isPatientViewer ? (
         <CreateEventPanel
           key={`create-${createEventKind}-${activePractitionerForDraft ?? 'any'}-${appointmentTimeDraft?.startTime ?? availabilityDraft?.startTime ?? 'default'}-${appointmentTimeDraft?.endTime ?? availabilityDraft?.endTime ?? 'default'}-${toDateInputValue(appointmentTimeDraft?.date ?? selectedDate)}-${appointmentTimeDraft?.endDate ? toDateInputValue(appointmentTimeDraft.endDate) : 'same'}`}
           initialKind={createEventKind}
