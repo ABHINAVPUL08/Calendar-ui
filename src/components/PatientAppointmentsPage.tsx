@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { formatTime } from '../date-utils'
 import { practitioners } from '../constants'
 import type { AppointmentType, CalendarEvent } from '../types'
@@ -5,8 +6,7 @@ import type { AppointmentType, CalendarEvent } from '../types'
 type Props = {
   appointments: CalendarEvent[]
   types: AppointmentType[]
-  patientName: string
-  onBack: () => void
+  onClose: () => void
   onSchedule: () => void
   onOpenVisit: (event: CalendarEvent) => void
   onCancelVisit: (eventId: string, label: string) => void
@@ -80,24 +80,41 @@ const ModeIcon = ({ mode }: { mode: string }) => {
 export const PatientAppointmentsPage = ({
   appointments,
   types,
-  patientName,
-  onBack,
+  onClose,
   onSchedule,
   onOpenVisit,
   onCancelVisit,
 }: Props) => {
+  const [confirmCancel, setConfirmCancel] = useState<{ id: string; label: string } | null>(null)
+
   return (
-    <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#f7fafc]">
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
-        <div className="mx-auto w-full max-w-3xl">
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(16,28,40,0.45)] p-4">
+      <div
+        className="flex h-[min(720px,90vh)] w-full max-w-[760px] flex-col overflow-hidden rounded-lg bg-white shadow-[0_24px_60px_rgba(16,28,40,0.3)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="my-appointments-title"
+      >
+        <div className="shrink-0 border-b border-slate-100 px-5 pt-5 pb-3">
+          <div className="relative mb-1 flex items-center justify-center">
+            <h2 id="my-appointments-title" className="text-center text-[16px] font-semibold text-[#1c2b3a]">
+              My appointments
+            </h2>
             <button
               type="button"
-              onClick={onBack}
-              className="text-[13px] font-semibold text-slate-500 hover:text-slate-800"
+              onClick={onClose}
+              className="absolute right-0 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-[22px] leading-none text-[#93a2b1] hover:bg-slate-50 hover:text-[#3c4b5a]"
+              aria-label="Close"
+              title="Close"
             >
-              ← Dashboard
+              ×
             </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div className="mb-3 flex justify-end">
             <button
               type="button"
               onClick={onSchedule}
@@ -106,9 +123,6 @@ export const PatientAppointmentsPage = ({
               + Schedule a visit
             </button>
           </div>
-
-          <h2 className="mb-1 text-[26px] font-bold tracking-tight text-slate-900">My appointments</h2>
-          <p className="mb-5 text-[13px] text-slate-500">All visits for {patientName}.</p>
 
           {appointments.length === 0 ? (
             <div className="rounded-2xl bg-white px-5 py-10 text-center ring-1 ring-slate-200">
@@ -128,10 +142,12 @@ export const PatientAppointmentsPage = ({
                 const type = types.find((item) => item.id === eventItem.appointmentTypeId)
                 const pending = eventItem.bookingStatus === 'pending'
                 const rejected = eventItem.bookingStatus === 'rejected'
+                const cancelled = eventItem.bookingStatus === 'cancelled'
                 const clinician = practitioners.find((item) => item.id === eventItem.practitionerId)
                 const start = new Date(eventItem.start)
                 const mode = visitMode(eventItem)
                 const label = `${type?.name ?? 'Visit'} · ${start.toLocaleDateString([], { month: 'short', day: 'numeric' })}`
+                const canCancel = !cancelled && !rejected
                 return (
                   <article
                     key={eventItem.id}
@@ -151,14 +167,22 @@ export const PatientAppointmentsPage = ({
                         <h3 className="text-[16px] font-bold text-slate-900">{type?.name ?? 'Visit'}</h3>
                         <span
                           className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                            pending
-                              ? 'bg-amber-100 text-amber-800'
-                              : rejected
-                                ? 'bg-rose-100 text-rose-800'
-                                : 'bg-emerald-100 text-emerald-800'
+                            cancelled
+                              ? 'bg-slate-200 text-slate-700'
+                              : pending
+                                ? 'bg-amber-100 text-amber-800'
+                                : rejected
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {pending ? 'Pending' : rejected ? 'Rejected' : 'Approved'}
+                          {cancelled
+                            ? 'Cancelled'
+                            : pending
+                              ? 'Pending'
+                              : rejected
+                                ? 'Rejected'
+                                : 'Approved'}
                         </span>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-slate-600">
@@ -181,26 +205,18 @@ export const PatientAppointmentsPage = ({
                         </span>
                       </div>
                     </div>
+                    {canCancel ? (
                       <button
                         type="button"
-                        className="grid size-9 shrink-0 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
-                        aria-label={`Cancel ${label}`}
-                        title="Cancel visit"
+                        className="h-9 shrink-0 rounded-lg border border-rose-200 bg-white px-3 text-[12px] font-semibold text-rose-600 hover:bg-rose-50"
                         onClick={(event) => {
                           event.stopPropagation()
-                          onCancelVisit(eventItem.id, label)
+                          setConfirmCancel({ id: eventItem.id, label })
                         }}
                       >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-                          <path
-                            d="M4 7h16M9 7V5h6v2M8 7l1 13h6l1-13"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                        Cancel
                       </button>
+                    ) : null}
                   </article>
                 )
               })}
@@ -208,6 +224,44 @@ export const PatientAppointmentsPage = ({
           )}
         </div>
       </div>
-    </main>
+    </div>
+
+      {confirmCancel ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/40 p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-[0_20px_50px_rgba(15,23,42,0.25)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-visit-title"
+          >
+            <h3 id="cancel-visit-title" className="text-[16px] font-bold text-slate-900">
+              Cancel this appointment?
+            </h3>
+            <p className="mt-2 text-[13px] text-slate-600">
+              {confirmCancel.label} will be marked cancelled. It will not be deleted.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600"
+                onClick={() => setConfirmCancel(null)}
+              >
+                Keep appointment
+              </button>
+              <button
+                type="button"
+                className="h-10 rounded-lg bg-rose-600 px-4 text-[13px] font-semibold text-white hover:brightness-110"
+                onClick={() => {
+                  onCancelVisit(confirmCancel.id, confirmCancel.label)
+                  setConfirmCancel(null)
+                }}
+              >
+                Cancel appointment
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
